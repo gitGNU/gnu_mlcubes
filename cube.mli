@@ -30,7 +30,7 @@ type rotation =
 type skeleton =
   {
     positions : point Maps.Int.t;
-    rotations : rotation list;
+    rotations : rotation Maps.Int.t;
   }
 ;;
 

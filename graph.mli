@@ -27,6 +27,8 @@ val rotate : float -> unit;;
 
 val scale : float -> unit;;
 
+val project : Geometry.vector -> int * int;;
+
 val draw_poly : Geometry.vector array -> Graphics.color -> unit;;
 
 val fill_poly : Geometry.vector array -> Graphics.color -> unit;;

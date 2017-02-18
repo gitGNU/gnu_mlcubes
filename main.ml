@@ -34,7 +34,7 @@ let mk_square_minx_4_3 () =
       let mk_index i = i + dc + 4 * dr in
       let mk_cycle cycle = Common.map mk_index cycle in
       { Cube.
-        center = Expr.int (2 * dc - 1), Expr.int (-1 - 2 * dr);
+        center = Expr.int (2 * dc - 1), Expr.int (1 - 2 * dr);
         cycles =
           Common.map
             mk_cycle
@@ -45,12 +45,18 @@ let mk_square_minx_4_3 () =
             ];
         order = 4;
       } in
-    [
-      mk_rotation 0 0;
-      mk_rotation 0 1;
-      mk_rotation 1 0;
-      mk_rotation 1 1;
-    ] in
+    let add_rotation rotations (i, dr, dc) =
+      let rotation = mk_rotation dr dc in
+      Maps.Int.add i rotation rotations in
+    List.fold_left
+      add_rotation
+      Maps.Int.empty
+      [
+        0, 0, 0;
+        1, 0, 1;
+        2, 1, 0;
+        3, 1, 1;
+      ] in
   let skeleton =
     { Cube.
       positions = positions;
@@ -92,7 +98,19 @@ let mk_square_minx_4_3 () =
   }
 ;;
 
-let draw_polygon = function
+let get_color is_hl r g b =
+  let t b =
+    if is_hl then
+      (b + 255) / 2
+    else
+      b in
+  let r = t r in
+  let g = t g in
+  let b = t b in
+  Graphics.rgb r g b
+;;
+
+let draw_polygon is_hl = function
   | { Cube.
       points = points;
       color = r, g, b;
@@ -103,15 +121,16 @@ let draw_polygon = function
       [| x; y; 1.0; |] in
     let points =
       Array.of_list (Common.map vector_of_point points) in
-    Graph.fill_poly points (Graphics.rgb r g b);
-    Graph.draw_poly points (Graphics.rgb 0 0 0)
+    Graph.fill_poly points (get_color is_hl r g b);
+    Graph.draw_poly points (get_color false 0 0 0)
 ;;
 
-let draw_tile positions position = function
+let draw_tile positions hl_tiles position = function
   | { Cube.
       orientation = i, n;
       polygons = polygons;
     } ->
+    let is_hl = List.mem position hl_tiles in
     Graph.with_proj
       (fun () ->
        let x, y =
@@ -120,34 +139,86 @@ let draw_tile positions position = function
        let angle = 2.0 *. pi *. float i /. float n in
        Graph.translate x y;
        Graph.rotate angle;
-       List.iter draw_polygon polygons)
+       List.iter (draw_polygon is_hl) polygons)
 ;;
 
-let draw_cube = function
+let find_hl mx my = function
+  | { Cube.
+      positions = _;
+      rotations = rotations;
+    } ->
+    let dist2_of_rotation = function
+      | { Cube.
+          center = center;
+          cycles = _;
+          order = _;
+        } ->
+        let cx, cy = center in
+        let cx, cy = Expr.eval cx, Expr.eval cy in
+        let cx, cy = Graph.project [| cx; cy; 1.0; |] in
+        let dx = cx - mx in
+        let dy = cy - my in
+        dx * dx + dy * dy in
+    let hl, _ =
+      Maps.Int.fold
+        (fun i rotation (hl, dist2) ->
+         let d2 = dist2_of_rotation rotation in
+         if d2 < dist2 then
+           i, d2
+         else
+           hl, dist2)
+        rotations
+        (-1, max_int) in
+    hl
+;;
+
+let draw_cube mx my = function
   | { Cube.
       skeleton = skeleton;
       tiles = tiles;
     } ->
     Graph.scale 0.15;
-    let positions =
+    let hl = find_hl mx my skeleton in
+    let positions, hl_tiles =
       match skeleton with
       | { Cube.
           positions = positions;
-          rotations = _;
-        } -> positions in
-    Maps.Int.iter (draw_tile positions) tiles
+          rotations = rotations;
+        } ->
+        let rotation = Maps.Int.find hl rotations in
+        let tiles =
+          List.fold_left
+            (fun tiles cycle -> List.rev_append cycle tiles)
+            []
+            rotation.Cube.cycles in
+        positions, tiles in
+    Maps.Int.iter (draw_tile positions hl_tiles) tiles
+;;
+
+let mouse_of_event = function
+  { Graphics.
+    mouse_x = mouse_x;
+    mouse_y = mouse_y;
+    button = _;
+    keypressed = _;
+    key = _;
+  } -> mouse_x, mouse_y
 ;;
 
 let main_loop () =
-  let rec loop cube =
+  let rec loop mx my cube =
     Graph.with_graph
-      (fun () -> Graph.with_proj (fun () -> draw_cube cube));
+      (fun () -> Graph.with_proj (fun () -> draw_cube mx my cube));
     let event =
-      Graphics.wait_next_event [ Graphics.Key_pressed; ] in
+      Graphics.wait_next_event
+        [ Graphics.Key_pressed; Graphics.Mouse_motion; ] in
+    let mx, my = mouse_of_event event in
     if event.Graphics.key <> 'q' then
-      loop cube in
+      loop mx my cube in
   Graphics.set_window_title "mlcubes v0";
-  loop (mk_square_minx_4_3 ())
+  let event = Graphics.wait_next_event [ Graphics.Poll; ] in
+  let mx, my = mouse_of_event event in
+  loop mx my (mk_square_minx_4_3 ())
 ;;
 
 let with_graphics f =
