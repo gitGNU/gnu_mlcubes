@@ -97,12 +97,8 @@ let div_v v k = mult_s_v (1.0 /. k) v;;
 
 let div_m m k = mult_s_m (1.0 /. k) m;;
 
-let debug_sexp ppf pp =
-  Format.fprintf ppf "@[<hv 2>(@,%t@;<0 -2>)@]" pp
-;;
-
 let debug_v ppf v =
-  debug_sexp
+  Debug.debug_sexp
     ppf
     (fun ppf ->
      Array.iteri
@@ -114,7 +110,7 @@ let debug_v ppf v =
 ;;
 
 let debug_m ppf m =
-  debug_sexp
+  Debug.debug_sexp
     ppf
     (fun ppf ->
      Array.iteri

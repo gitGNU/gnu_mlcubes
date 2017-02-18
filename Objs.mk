@@ -21,12 +21,21 @@ BYTLIBS=\
 BINLIBS=$(BYTLIBS:.cma=.cmxa)
 
 MLIFILES=\
+ debug.mli\
+ common.mli\
  geometry.mli\
+ maps.mli\
+ expr.mli\
+ cube.mli\
  graph.mli\
  main.mli
 
 MLFILES=\
+ debug.ml\
+ common.ml\
  geometry.ml\
+ maps.ml\
+ expr.ml\
  graph.ml\
  main.ml
 
