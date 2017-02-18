@@ -1,0 +1,107 @@
+#!/bin/sh -e
+
+########################################################################
+# This file is part of mlcubes.                                        #
+#                                                                      #
+# mlcubes is free software: you can redistribute it and/or modify it   #
+# under the terms of the GNU General Public License as published by    #
+# the Free Software Foundation, either version 3 of the License, or    #
+# (at your option) any later version.                                  #
+#                                                                      #
+# mlcubes is distributed in the hope that it will be useful, but       #
+# WITHOUT ANY WARRANTY; without even the implied warranty of           #
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU     #
+# General Public License for more details.                             #
+#                                                                      #
+# You should have received a copy of the GNU General Public License    #
+# along with mlcubes. If not, see <http://www.gnu.org/licenses/>.      #
+########################################################################
+
+HELP=
+MODE=USER
+OS=
+PREFIX=/usr
+
+help () {
+    echo "$0 [options]"
+    echo "  -h, --help            Show this help"
+    echo "      --dev             Configure for developers"
+    echo "      --nt              Force configuration for nt"
+    echo "      --posix           Force configuration for posix"
+    echo "      --prefix=PREFIX   Set prefix"
+}
+
+parse () {
+    if [ $# -gt 0 ]
+    then
+        case "$1" in
+            --dev)
+                MODE=DEV;;
+            --nt)
+                OS=nt;;
+            --posix)
+                OS=posix;;
+            --prefix=*)
+                PREFIX="$(echo "$1" | sed -e 's/^--prefix=//')";;
+            -h | --help)
+                HELP=yes;;
+            *)
+                echo "unknown option: $1" >&2
+                help >&2
+                false;;
+        esac
+        shift
+        parse "$@"
+    fi
+}
+
+parse "$@"
+
+if [ -n "$HELP" ]
+then
+    help
+else
+
+    if [ -z "$OS" ]
+    then
+        UNAME="$(uname)"
+        case "$UNAME" in
+            "Linux" | "OpenBSD")
+                OS=posix;;
+            "CYGWIN_NT-6.1")
+                OS=nt;;
+            *)
+                echo "unknown OS: $UNAME" >&2
+                false;;
+        esac
+    fi
+
+    echo "MODE:   $MODE"
+    echo "OS:     $OS"
+    echo "PREFIX: $PREFIX"
+
+    rm -f unconfigure
+    (
+        echo "#!/bin/sh -e"
+        echo ""
+        echo "rm -f unconfigure .depend.mk .config.mk"
+    ) >unconfigure
+    chmod 0000 unconfigure
+    chmod +rw unconfigure
+    chmod -w+x unconfigure
+
+    rm -f .config.mk
+    (
+        echo "PREFIX=$PREFIX"
+        echo "OS=$OS"
+        echo "MODE=$MODE"
+    ) >.config.mk
+    chmod 0000 .config.mk
+    chmod +rw .config.mk
+    chmod -w .config.mk
+
+    rm -f .depend.mk
+    echo >.depend.mk
+    make depend >/dev/null
+
+fi
