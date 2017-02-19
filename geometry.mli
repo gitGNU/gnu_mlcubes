@@ -45,6 +45,8 @@ val sub_m : matrix -> matrix -> matrix;;
 
 val mult_s_v : float -> vector -> vector;;
 
+val mult_v_v : vector -> vector -> float;;
+
 val mult_s_m : float -> matrix -> matrix;;
 
 val mult_m_v : matrix -> vector -> vector;;
@@ -54,6 +56,8 @@ val mult_m_m : matrix -> matrix -> matrix;;
 val div_v : vector -> float -> vector;;
 
 val div_m : matrix -> float -> matrix;;
+
+val norm_v : vector -> (unit -> 'a) -> (vector -> 'a) -> 'a;;
 
 val debug_v : Format.formatter -> vector -> unit;;
 

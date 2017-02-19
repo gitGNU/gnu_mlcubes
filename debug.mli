@@ -18,3 +18,5 @@
 val debug_sexp :
   Format.formatter -> (Format.formatter -> unit) -> unit
 ;;
+
+val fdebug : int -> (Format.formatter -> unit) -> unit;;

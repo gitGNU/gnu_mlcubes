@@ -17,7 +17,7 @@
 
 type point = Expr.t * Expr.t;;
 
-type cycle = int list;;
+type cycle = int array;;
 
 type rotation =
   {
@@ -48,7 +48,7 @@ type tile =
   }
 ;;
 
-type cube =
+type t =
   {
     skeleton : skeleton;
     tiles : tile Maps.Int.t;

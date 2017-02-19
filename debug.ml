@@ -18,3 +18,8 @@
 let debug_sexp ppf pp =
   Format.fprintf ppf "@[<hv 2>(@,%t@;<0 -2>)@]" pp
 ;;
+
+let fdebug level f =
+  if level <= Config.get_debug_level () then
+    Format.eprintf "@[%t@]@." f
+;;

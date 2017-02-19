@@ -21,6 +21,7 @@ BYTLIBS=\
 BINLIBS=$(BYTLIBS:.cma=.cmxa)
 
 MLIFILES=\
+ config.mli\
  debug.mli\
  common.mli\
  geometry.mli\
@@ -31,6 +32,7 @@ MLIFILES=\
  main.mli
 
 MLFILES=\
+ config.ml\
  debug.ml\
  common.ml\
  geometry.ml\

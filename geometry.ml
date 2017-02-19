@@ -54,6 +54,17 @@ let add_m m1 m2 =
 
 let mult_s_v k v = init_v (dim_v v) (fun i -> k *. v.(i));;
 
+let mult_v_v v1 v2 =
+  let l = dim_v v1 in
+  assert (l = dim_v v2);
+  let rec loop sum i =
+    if i = l then
+      sum
+    else
+      loop (sum +. v1.(i) *. v2.(i)) (succ i) in
+  loop 0.0 0
+;;
+
 let mult_s_m k m =
   let h, w = dim_m m in
   init_m h w (fun r c -> k *. m.(r).(c))
@@ -96,6 +107,14 @@ let sub_m m1 m2 = add_m m1 (mult_s_m (-1.0) m2);;
 let div_v v k = mult_s_v (1.0 /. k) v;;
 
 let div_m m k = mult_s_m (1.0 /. k) m;;
+
+let norm_v v f_null f =
+  let n2 = mult_v_v v v in
+  if n2 = 0.0 then
+    f_null ()
+  else
+    f (div_v v (sqrt n2))
+;;
 
 let debug_v ppf v =
   Debug.debug_sexp

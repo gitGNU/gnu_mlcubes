@@ -15,10 +15,18 @@
 (* along with mlcubes. If not, see <http://www.gnu.org/licenses/>.    *)
 (**********************************************************************)
 
-val gcd : int -> int -> int;;
+type rotation_mode =
+  | Fast
+  | Intuitive
+;;
 
-val int : float -> int;;
+let get_set default =
+  let r = ref default in
+  let get () = !r in
+  let set x = r := x in
+  get, set
+;;
 
-val clamp : 'a -> 'a -> 'a -> 'a;;
+let get_debug_level, set_debug_level = get_set 0;;
 
-val map : ('a -> 'b) -> 'a list -> 'b list;;
+let get_rotation_mode, set_rotation_mode = get_set Fast;;

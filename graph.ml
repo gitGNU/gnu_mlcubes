@@ -17,11 +17,13 @@
 
 let projection = ref (Geometry.identity 3);;
 
-let model = Stack.create ();;
+let model =
+  let model = Stack.create () in
+  Stack.push (Geometry.identity 3) model;
+  model
+;;
 
-let with_graph f =
-  assert (Stack.is_empty model);
-  Graphics.clear_graph ();
+let mk_proj () =
   let w = Graphics.size_x () in
   let h = Graphics.size_y () in
   let m = Geometry.identity 3 in
@@ -33,11 +35,15 @@ let with_graph f =
   m.(1).(1) <- k;
   m.(1).(2) <- cy;
   projection := m;
-  Stack.push (Geometry.identity 3) model;
-  f ();
-  ignore (Stack.pop model);
-  Graphics.synchronize ()
 ;;
+
+let clear r g b =
+  Graphics.set_color (Graphics.rgb r g b);
+  Graphics.fill_rect
+    0 0 (Graphics.size_x () - 1) (Graphics.size_y () - 1)
+;;
+
+let swap () = Graphics.synchronize ();;
 
 let mult m =
   let om = Stack.pop model in
@@ -84,15 +90,13 @@ let scale k =
   mult m
 ;;
 
-let int x = int_of_float (x +. if x < 0.0 then -0.5 else 0.5);;
-
 let project v =
   assert (Geometry.dim_v v = 3);
   let v = Geometry.mult_m_v (Stack.top model) v in
   let v = Geometry.mult_m_v !projection v in
   let x = v.(0) /. v.(2) in
   let y = v.(1) /. v.(2) in
-  int x, int y
+  Common.int x, Common.int y
 ;;
 
 let draw_poly points color =

@@ -15,7 +15,11 @@
 (* along with mlcubes. If not, see <http://www.gnu.org/licenses/>.    *)
 (**********************************************************************)
 
-val with_graph : (unit -> unit) -> unit;;
+val mk_proj : unit -> unit;;
+
+val clear : int -> int -> int -> unit;;
+
+val swap : unit -> unit;;
 
 val with_proj : (unit -> unit) -> unit;;
 

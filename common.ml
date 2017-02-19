@@ -15,4 +15,13 @@
 (* along with mlcubes. If not, see <http://www.gnu.org/licenses/>.    *)
 (**********************************************************************)
 
+let rec gcd a = function
+  | 0 -> a
+  | b -> gcd b (a mod b)
+;;
+
+let int x = int_of_float (x +. if x < 0.0 then -0.5 else 0.5);;
+
+let clamp a b c = max a (min b c);;
+
 let map f l = List.rev (List.rev_map f l);;
