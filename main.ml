@@ -15,16 +15,49 @@
 (* along with mlcubes. If not, see <http://www.gnu.org/licenses/>.    *)
 (**********************************************************************)
 
+type locked =
+  {
+    locked_hl : int;
+    locked_x : int;
+    locked_y : int;
+    locked_angle : float;
+  }
+;;
+
 type mouse_state =
-  | Free
-  | Locked of int * int * float
+  | Free of int option
+  | Locked of locked
+;;
+
+type dimension =
+  {
+    max_x : float;
+    max_y : float;
+    min_x : float;
+    min_y : float;
+  }
 ;;
 
 type state =
   {
     cube : Cube.t;
-    hl : int;
+    dimension : dimension;
     mouse_state : mouse_state;
+  }
+;;
+
+type event_kind =
+  | Mouse_move
+  | Mouse_down
+  | Mouse_up
+  | Key of char
+;;
+
+type event =
+  {
+    mouse_x : int;
+    mouse_y : int;
+    event_kind : event_kind;
   }
 ;;
 
@@ -168,27 +201,35 @@ let draw_tile position is_hl = function
        List.iter (draw_polygon is_hl) polygons)
 ;;
 
-let draw_cube hl hl_angle = function
+let draw_cube hl_angle_opt = function
   | { Cube.
       skeleton = skeleton;
       tiles = tiles;
     } ->
-    let positions, center, hl_tiles =
+    let positions, center_hl_tiles_angle_opt =
       match skeleton with
       | { Cube.
           positions = positions;
           rotations = rotations;
         } ->
-        let rotation = Maps.Int.find hl rotations in
-        let tiles =
-          List.fold_left
-            (fun tiles cycle ->
-             List.rev_append (Array.to_list cycle) tiles)
-            []
-            rotation.Cube.cycles in
-        positions, rotation.Cube.center, tiles in
+        let center_hl_tiles_angle_opt =
+          match hl_angle_opt with
+          | None -> None
+          | Some (hl, angle) ->
+            let rotation = Maps.Int.find hl rotations in
+            let tiles =
+              List.fold_left
+                (fun tiles cycle ->
+                 List.rev_append (Array.to_list cycle) tiles)
+                []
+                rotation.Cube.cycles in
+            Some (rotation.Cube.center, tiles, angle) in
+        positions, center_hl_tiles_angle_opt in
     let fg_tiles, bg_tiles =
-      let predictate i _ = List.mem i hl_tiles in
+      let predictate i _ =
+        match center_hl_tiles_angle_opt with
+        | None -> true
+        | Some (_, hl_tiles, _) -> List.mem i hl_tiles in
       Maps.Int.partition predictate tiles in
     Maps.Int.iter
       (fun i tile ->
@@ -197,14 +238,16 @@ let draw_cube hl hl_angle = function
       bg_tiles;
     Graph.with_proj
       (fun () ->
-       if hl_angle <> 0.0 then
-         begin
+       begin
+         match center_hl_tiles_angle_opt with
+         | None -> ()
+         | Some (center, _, angle) ->
            let cx, cy = center in
            let cx, cy = Expr.eval cx, Expr.eval cy in
            Graph.translate cx cy;
-           Graph.rotate hl_angle;
+           Graph.rotate angle;
            Graph.translate (-. cx) (-. cy);
-         end;
+       end;
        Maps.Int.iter
          (fun i tile ->
           let position = Maps.Int.find i positions in
@@ -238,54 +281,65 @@ let get_angle cx cy lx ly mx my =
 let draw_state = function
   | {
       cube = cube;
-      hl = hl;
+      dimension = _;
       mouse_state = mouse_state;
     } ->
-    let angle =
+    let hl_angle_opt =
       match mouse_state with
-      | Free -> 0.0
-      | Locked (_, _, angle) -> angle in
-    draw_cube hl angle cube
-;;
-
-let mouse_of_event = function
-    { Graphics.
-      mouse_x = mouse_x;
-      mouse_y = mouse_y;
-      button = _;
-      keypressed = _;
-      key = _;
-    } -> mouse_x, mouse_y
+      | Free hl ->
+        begin
+          match hl with
+          | None -> None
+          | Some hl -> Some (hl, 0.0)
+        end
+      | Locked locked -> Some (locked.locked_hl, locked.locked_angle) in
+    draw_cube hl_angle_opt cube
 ;;
 
 let find_hl mx my = function
-  | { Cube.
-      positions = _;
-      rotations = rotations;
+  | {
+      cube = cube;
+      dimension = dimension;
+      mouse_state = _;
     } ->
-    let dist2_of_rotation = function
-      | { Cube.
-          center = center;
-          cycles = _;
-          order = _;
-        } ->
-        let cx, cy = center in
-        let cx, cy = Expr.eval cx, Expr.eval cy in
-        let cx, cy = Graph.project [| cx; cy; 1.0; |] in
-        let dx = cx - mx in
-        let dy = cy - my in
-        dx * dx + dy * dy in
-    let hl, _ =
-      Maps.Int.fold
-        (fun i rotation (hl, dist2) ->
-         let d2 = dist2_of_rotation rotation in
-         if d2 < dist2 then
-           i, d2
-         else
-           hl, dist2)
-        rotations
-        (-1, max_int) in
-    hl
+    let min_x, min_y =
+      Graph.project [| dimension.min_x; dimension.min_y; 1.0; |] in
+    let max_x, max_y =
+      Graph.project [| dimension.max_x; dimension.max_y; 1.0; |] in
+    Debug.fdebug
+      3
+      (fun epf ->
+       Format.fprintf
+         epf "PROJRECT@ %d@ %d@ %d@ %d@ %d@ %d"
+         min_x min_y max_x max_y mx my);
+    if min_x <= mx && mx <= max_x
+       && min_y <= my && my <= max_y then
+      let rotations = cube.Cube.skeleton.Cube.rotations in
+      let dist2_of_rotation = function
+        | { Cube.
+            center = center;
+            cycles = _;
+            order = _;
+          } ->
+          let cx, cy = center in
+          let cx, cy = Expr.eval cx, Expr.eval cy in
+          let cx, cy = Graph.project [| cx; cy; 1.0; |] in
+          let dx = cx - mx in
+          let dy = cy - my in
+          dx * dx + dy * dy in
+      let hl, _ =
+        Maps.Int.fold
+          (fun i rotation (hl, dist2) ->
+           let d2 = dist2_of_rotation rotation in
+           if d2 < dist2 then
+             i, d2
+           else
+             hl, dist2)
+          rotations
+          (-1, max_int) in
+      Some hl
+    else
+      None
 ;;
 
 let add_rotation (a, b) (c, d) =
@@ -326,58 +380,81 @@ let apply_rotation tiles rotation count =
 ;;
 
 let handle_event state event =
-  match event with
-  | { Graphics.
-      mouse_x = mx;
-      mouse_y = my;
-      button = button;
-      keypressed =_;
-      key = _;
-    } ->
-    match state.mouse_state with
-    | Free ->
-      let hl = find_hl mx my state.cube.Cube.skeleton in
-      let state =
+  match state.mouse_state with
+  | Free _ ->
+    let hl = find_hl event.mouse_x event.mouse_y state in
+    let mouse_state =
+      match event.event_kind with
+      | Mouse_move -> Free hl
+      | Mouse_down ->
+        begin
+          match hl with
+          | None -> Free None
+          | Some hl ->
+            let locked =
+              {
+                locked_hl = hl;
+                locked_x = event.mouse_x;
+                locked_y = event.mouse_y;
+                locked_angle = 0.0;
+              } in
+            Locked locked
+        end
+      | Mouse_up -> Free hl
+      | Key _ -> Free hl in
+    {
+      state with mouse_state = mouse_state;
+    }
+  | Locked locked ->
+    let rotation =
+      Maps.Int.find
+        locked.locked_hl
+        state.cube.Cube.skeleton.Cube.rotations in
+    let angle =
+      let cx, cy = rotation.Cube.center in
+      get_angle
+        cx cy
+        locked.locked_x locked.locked_y
+        event.mouse_x event.mouse_y in
+    match event.event_kind with
+    | Mouse_move ->
+      let locked =
         {
-          state with
-          hl = hl;
+          locked with
+          locked_angle = angle;
         } in
-      if button then
-        let mouse_state = Locked (mx, my, 0.0) in
-        { state with mouse_state = mouse_state; }
-      else
-        state
-    | Locked (lx, ly, _) ->
-      let rotation =
-        Maps.Int.find
-          state.hl
-          state.cube.Cube.skeleton.Cube.rotations in
+      let mouse_state = Locked locked in
+      { state with mouse_state = mouse_state; }
+    | Mouse_down -> assert false
+    | Mouse_up ->
+      let order = rotation.Cube.order in
+      let angle = float order *. angle /. (2.0 *. pi) in
+      let angle = Common.int angle in
       let angle =
-        let cx, cy = rotation.Cube.center in
-        get_angle cx cy lx ly mx my in
-      if button then
-        let mouse_state = Locked (lx, ly, angle) in
-        { state with mouse_state = mouse_state; }
-      else
-        let order = rotation.Cube.order in
-        let angle = float order *. angle /. (2.0 *. pi) in
-        let angle = Common.int angle in
-        let angle =
-          if angle < 0 then
-            angle + order
-          else
-            angle in
-        let tiles =
-          apply_rotation state.cube.Cube.tiles rotation angle in
-        let cube = { state.cube with Cube.tiles = tiles; } in
+        if angle < 0 then
+          angle + order
+        else
+          angle in
+      let tiles =
+        apply_rotation state.cube.Cube.tiles rotation angle in
+      let cube = { state.cube with Cube.tiles = tiles; } in
+      let hl = find_hl event.mouse_x event.mouse_y state in
+      {
+        state with
+        cube = cube;
+        mouse_state = Free hl;
+      }
+    | Key _ ->
+      let locked =
         {
-          cube = cube;
-          hl = find_hl mx my state.cube.Cube.skeleton;
-          mouse_state = Free;
-        }
+          locked with
+          locked_angle = angle;
+        } in
+      let mouse_state = Locked locked in
+      { state with mouse_state = mouse_state; }
 ;;
 
-let debug_event = function
+let debug_raw_event = function
   | { Graphics.
       mouse_x = mouse_x;
       mouse_y = mouse_y;
@@ -386,14 +463,91 @@ let debug_event = function
       key = key;
     } ->
     Debug.fdebug
-      2
+      3
       (fun epf ->
        Debug.debug_sexp
          epf
          (fun epf ->
           Format.fprintf
-            epf "EVENT@ %d@ %d@ %B @ %B@ %C"
+            epf "RAWEVENT@ %d@ %d@ %B @ %B@ %C"
             mouse_x mouse_y button keypressed key))
+;;
+
+let debug_event event =
+  Debug.fdebug
+    2
+    (fun epf ->
+     Debug.debug_sexp
+       epf
+       (fun epf ->
+        Format.fprintf
+          epf "EVENT@ %d@ %d@ %t"
+          event.mouse_x event.mouse_y
+          (fun epf ->
+           match event.event_kind with
+           | Mouse_move -> Format.fprintf epf "MOVE"
+           | Mouse_down -> Format.fprintf epf "DOWN"
+           | Mouse_up -> Format.fprintf epf "UP"
+           | Key k ->
+             Debug.debug_sexp
+               epf
+               (fun epf -> Format.fprintf epf "KEY@ %C" k))))
+;;
+
+let wait_next_event =
+  let last_event =
+    ref
+      { Graphics.
+        mouse_x = -1;
+        mouse_y = -1;
+        button = false;
+        keypressed = false;
+        key = '\000';
+      } in
+  let get, register =
+    let events = Queue.create () in
+    let get () =
+      if Queue.is_empty events then
+        None
+      else
+        Some (Queue.take events) in
+    let register raw_event event =
+      let mouse_x = raw_event.Graphics.mouse_x in
+      let mouse_y = raw_event.Graphics.mouse_y in
+      let event = {
+          mouse_x = mouse_x;
+          mouse_y = mouse_y;
+          event_kind = event;
+        } in
+      Queue.add event events in
+    get, register in
+  let rec wait () =
+    match get () with
+    | None ->
+      let event =
+        Graphics.wait_next_event
+          [
+            Graphics.Button_down;
+            Graphics.Button_up;
+            Graphics.Key_pressed;
+            Graphics.Mouse_motion;
+          ] in
+      debug_raw_event event;
+      if event.Graphics.mouse_x <> !last_event.Graphics.mouse_x
+         || event.Graphics.mouse_y <> !last_event.Graphics.mouse_y then
+        register event Mouse_move;
+      if event.Graphics.keypressed then
+        register event (Key event.Graphics.key);
+      if event.Graphics.button <> !last_event.Graphics.button then
+        register
+          event
+          (if event.Graphics.button then Mouse_down else Mouse_up);
+      last_event := event;
+      wait ()
+    | Some event ->
+      debug_event event;
+      event in
+  wait
 ;;
 
 let rec loop state =
@@ -401,34 +555,90 @@ let rec loop state =
   Graph.clear 0 0 0;
   draw_state state;
   Graph.swap ();
-  let event =
-    Graphics.wait_next_event
-      [
-        Graphics.Button_down;
-        Graphics.Button_up;
-        Graphics.Key_pressed;
-        Graphics.Mouse_motion;
-      ] in
-  debug_event event;
-  if event.Graphics.key <> 'q' then
+  let event = wait_next_event () in
+  if event.event_kind <> Key 'q' then
     let state = handle_event state event in
     loop state
 ;;
 
+let merge_dimension dimension x y =
+  match dimension with
+  | {
+      max_x = max_x;
+      max_y = max_y;
+      min_x = min_x;
+      min_y = min_y;
+    } ->
+    {
+      max_x = max max_x x;
+      max_y = max max_y y;
+      min_x = min min_x x;
+      min_y = min min_y y;
+    }
+;;
+
+let get_dimension = function
+  | { Cube.
+      skeleton = skeleton;
+      tiles = tiles;
+    } ->
+    let min_float = -. max_float in
+    let dimension =
+      {
+        max_x = min_float;
+        max_y = min_float;
+        min_x = max_float;
+        min_y = max_float;
+      } in
+    let positions = skeleton.Cube.positions in
+    Maps.Int.fold
+      (fun i tile dimension ->
+       let cx, cy = Maps.Int.find i positions in
+       let cx, cy = Expr.eval cx, Expr.eval cy in
+       let z =
+         List.fold_left
+           (fun z polygon ->
+            List.fold_left
+              (fun z (px, py) ->
+               let px, py = Expr.eval px, Expr.eval py in
+               let z = max z (abs_float px) in
+               let z = max z (abs_float py) in
+               z)
+              z
+              polygon.Cube.points)
+           0.0
+           tile.Cube.polygons in
+       let dimension = merge_dimension dimension (cx -. z) (cy -. z) in
+       let dimension = merge_dimension dimension (cx +. z) (cy +. z) in
+       dimension)
+      tiles
+      dimension
+;;
+
 let main_loop () =
   Graphics.set_window_title "mlcubes v0";
-  Graph.mk_proj ();
   Graph.scale 0.15;
-  let event = Graphics.wait_next_event [ Graphics.Poll; ] in
-  let mx, my = mouse_of_event event in
+  let mx, my = Graphics.mouse_pos () in
   let cube = mk_square_minx_4_3 () in
-  let hl = find_hl mx my cube.Cube.skeleton in
+  let dimension = get_dimension cube in
+  Debug.fdebug
+    1
+    (fun epf ->
+     Debug.debug_sexp
+       epf
+       (fun epf ->
+        Format.fprintf
+          epf "DIMENSION@ %f@ %f@ %f@ %f"
+          dimension.min_x dimension.min_y
+          dimension.max_x dimension.max_y));
   let state =
     {
       cube = cube;
-      hl = hl;
-      mouse_state = Free;
+      dimension = dimension;
+      mouse_state = Free None;
     } in
+  let hl = find_hl mx my state in
+  let state = { state with mouse_state = Free hl; } in
   loop state
 ;;
 
