@@ -251,6 +251,13 @@ let draw_cube hl_angle_opt = function
        Maps.Int.iter
          (fun i tile ->
           let position = Maps.Int.find i positions in
+          Debug.fdebug
+            2
+            (fun epf ->
+             Format.fprintf
+               epf "drawing tile %d at %f %f"
+               i
+               (Expr.eval (fst position)) (Expr.eval (snd position)));
           draw_tile position true tile)
          fg_tiles);
 ;;
@@ -617,10 +624,24 @@ let get_dimension = function
 
 let main_loop () =
   Graphics.set_window_title "mlcubes v0";
-  Graph.scale 0.15;
   let mx, my = Graphics.mouse_pos () in
   let cube = mk_square_minx_4_3 () in
   let dimension = get_dimension cube in
+  begin
+    match dimension with
+    | {
+        max_x = max_x;
+        max_y = max_y;
+        min_x = min_x;
+        min_y = min_y;
+      } ->
+      let cx = (min_x +. max_x) /. 2.0 in
+      let cy = (min_y +. max_y) /. 2.0 in
+      let dx = max_x -. min_x in
+      let dy = max_y -. min_y in
+      Graph.scale (0.9 *. sqrt 2.0 /. max dx dy);
+      Graph.translate (-. cx) (-. cy)
+  end;
   Debug.fdebug
     1
     (fun epf ->
