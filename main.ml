@@ -712,6 +712,7 @@ let main () =
   with
   | x ->
     Printf.eprintf "# error: %s" (Printexc.to_string x);
+    prerr_newline ();
     1
 ;;
 
