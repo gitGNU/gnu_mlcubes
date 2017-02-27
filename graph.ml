@@ -33,6 +33,15 @@ type event =
   }
 ;;
 
+type rect =
+  {
+    left : int;
+    bottom : int;
+    width : int;
+    height : int;
+  }
+;;
+
 let debug_raw_event = function
   | { Graphics.
       mouse_x = mouse_x;
@@ -263,4 +272,50 @@ let fill_poly points color =
   Graphics.set_color color;
   let points = Array.map project points in
   Graphics.fill_poly points
+;;
+
+let with_rect mthd color = function
+  | {
+      left = left;
+      bottom = bottom;
+      width = width;
+      height = height;
+    } ->
+    Graphics.set_color color;
+    mthd left bottom width height
+;;
+
+let fill_rect = with_rect Graphics.fill_rect;;
+
+let text_size = Graphics.text_size;;
+
+let draw_string =
+  let mem = Hashtbl.create 10 in
+  let draw_string x y bg fg scale text =
+    begin
+      if not (Hashtbl.mem mem (bg, fg, scale, text)) then
+        let w, h = Graphics.text_size text in
+        let old = Graphics.get_image 0 0 w h in
+        Graphics.set_color bg;
+        Graphics.fill_rect 0 0 w h;
+        Graphics.moveto 0 0;
+        Graphics.set_color fg;
+        Graphics.draw_string text;
+        let text_image = Graphics.get_image 0 0 w h in
+        Graphics.draw_image old 0 0;
+        let dump = Graphics.dump_image text_image in
+        let scaled =
+          Array.init
+            (scale * Array.length dump)
+            (fun i ->
+             Array.init
+               (scale * Array.length dump.(0))
+               (fun j ->
+                dump.(i / scale).(j / scale))) in
+        Hashtbl.add
+          mem (bg, fg, scale, text) (Graphics.make_image scaled);
+    end;
+    Graphics.moveto x y;
+    Graphics.draw_image (Hashtbl.find mem (bg, fg, scale, text)) x y in
+  draw_string
 ;;

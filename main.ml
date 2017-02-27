@@ -24,19 +24,10 @@ type dimension =
   }
 ;;
 
-type rect =
-  {
-    left : int;
-    bottom : int;
-    width : int;
-    height : int;
-  }
-;;
-
 type menu_entry =
   {
     entry_text : string;
-    entry_rect : rect;
+    entry_rect : Graph.rect;
     entry_text_left : int;
     entry_text_bottom : int;
   }
@@ -45,7 +36,7 @@ type menu_entry =
 type menu =
   {
     menu_scale : int;
-    menu_rect : rect;
+    menu_rect : Graph.rect;
     menu_entries : menu_entry array;
     menu_selected : int option;
   }
@@ -68,7 +59,6 @@ type cube_state =
 type game_state =
   | Cube of cube_state
   | Menu of menu
-  | Quit
 ;;
 
 type cube_data =
@@ -89,6 +79,29 @@ type state =
   }
 ;;
 
+type action_kind =
+  | Continue
+  | Quit
+;;
+
+type action =
+  {
+    action_kind : action_kind;
+    state : state;
+  }
+;;
+
+let mk_action action_kind state =
+  {
+    action_kind = action_kind;
+    state = state;
+  }
+;;
+
+let continue = mk_action Continue
+and quit = mk_action Quit
+;;
+
 let pi = acos (-. 1.0);;
 
 let ( / ) a b =
@@ -106,8 +119,9 @@ and ( mod ) a b =
 ;;
 
 let rect_contains rect mx my =
-  mx >= rect.left && mx < rect.left + rect.width
-  && my >= rect.bottom && my < rect.bottom + rect.height
+  mx >= rect.Graph.left && mx < rect.Graph.left + rect.Graph.width
+  && my >= rect.Graph.bottom
+  && my < rect.Graph.bottom + rect.Graph.height
 ;;
 
 let get_color is_hl r g b =
@@ -122,6 +136,10 @@ let get_color is_hl r g b =
   Graph.rgb r g b
 ;;
 
+let green = Graph.rgb 0 255 0
+and black = Graph.rgb 0 0 0
+;;
+
 let draw_polygon is_hl = function
   | { Cube.
       points = points;
@@ -134,7 +152,7 @@ let draw_polygon is_hl = function
     let points =
       Array.of_list (Common.map vector_of_point points) in
     Graph.fill_poly points (get_color is_hl r g b);
-    Graph.draw_poly points (Graph.rgb 0 0 0)
+    Graph.draw_poly points black
 ;;
 
 let draw_tile position is_hl = function
@@ -256,7 +274,7 @@ let mk_menu size_x size_y entries =
   let w, h =
     Array.fold_left
       (fun (w, h) t ->
-       let tw, th = Graphics.text_size t in
+       let tw, th = Graph.text_size t in
        max w tw, max h th)
       (0, 0)
       entries in
@@ -272,7 +290,7 @@ let mk_menu size_x size_y entries =
   let x0 = (size_x - fw) / 2 in
   let y0 = (size_y - fh) / 2 in
   let menu_rect =
-    {
+    { Graph.
       left = x0;
       bottom = y0;
       width = fw;
@@ -283,7 +301,7 @@ let mk_menu size_x size_y entries =
       (fun ai text ->
        let gi = Array.length entries - ai - 1 in
        let rect =
-         {
+         { Graph.
            left = x0 + scale;
            bottom = y0 + scale + gi * scale * (h + 2 * vpad);
            width = fw - 2 * scale;
@@ -305,49 +323,8 @@ let mk_menu size_x size_y entries =
   }
 ;;
 
-let with_rect mthd r g b = function
-  | {
-      left = left;
-      bottom = bottom;
-      width = width;
-      height = height;
-    } ->
-    Graphics.set_color (Graphics.rgb r g b);
-    mthd left bottom width height
-;;
-
-let fill_rect = with_rect Graphics.fill_rect;;
-
-let draw_string =
-  let mem = Hashtbl.create 10 in
-  let draw_string bg fg scale text =
-    let x, y = Graphics.current_point () in
-    begin
-      if not (Hashtbl.mem mem (bg, fg, scale, text)) then
-        let w, h = Graphics.text_size text in
-        let old = Graphics.get_image 0 0 w h in
-        Graphics.set_color bg;
-        Graphics.fill_rect 0 0 w h;
-        Graphics.moveto 0 0;
-        Graphics.set_color fg;
-        Graphics.draw_string text;
-        let text_image = Graphics.get_image 0 0 w h in
-        Graphics.draw_image old 0 0;
-        let dump = Graphics.dump_image text_image in
-        let scaled =
-          Array.init
-            (scale * Array.length dump)
-            (fun i ->
-             Array.init
-               (scale * Array.length dump.(0))
-               (fun j ->
-                dump.(i / scale).(j / scale))) in
-        Hashtbl.add
-          mem (bg, fg, scale, text) (Graphics.make_image scaled);
-        Graphics.moveto x y
-    end;
-    Graphics.draw_image (Hashtbl.find mem (bg, fg, scale, text)) x y in
-  draw_string
+let menu_fg_color = green
+and menu_bg_color = black
 ;;
 
 let draw_menu _size_x _size_y = function
@@ -357,15 +334,15 @@ let draw_menu _size_x _size_y = function
       menu_entries = menu_entries;
       menu_selected = menu_selected;
     } ->
-    fill_rect 0 255 0 menu_rect;
+    Graph.fill_rect menu_fg_color menu_rect;
     let inner_rect =
-      {
-        left = menu_rect.left + menu_scale;
-        bottom = menu_rect.bottom + menu_scale;
-        width = menu_rect.width - 2 * menu_scale;
-        height = menu_rect.height - 2 * menu_scale;
+      { Graph.
+        left = menu_rect.Graph.left + menu_scale;
+        bottom = menu_rect.Graph.bottom + menu_scale;
+        width = menu_rect.Graph.width - 2 * menu_scale;
+        height = menu_rect.Graph.height - 2 * menu_scale;
       } in
-    fill_rect 0 0 0 inner_rect;
+    Graph.fill_rect menu_bg_color inner_rect;
     Array.iteri
       (fun ai ->
        function
@@ -378,13 +355,12 @@ let draw_menu _size_x _size_y = function
          let bg, fg =
            if Some ai = menu_selected then
              begin
-               fill_rect 0 255 0 rect;
-               Graphics.rgb 0 255 0, Graphics.rgb 0 0 0
+               Graph.fill_rect menu_fg_color rect;
+               menu_fg_color, menu_bg_color
              end
            else
-             Graphics.rgb 0 0 0, Graphics.rgb 0 255 0 in
-         Graphics.moveto x y;
-         draw_string bg fg menu_scale text)
+             menu_bg_color, menu_fg_color in
+         Graph.draw_string x y bg fg menu_scale text)
       menu_entries
 ;;
 
@@ -397,12 +373,16 @@ let draw_state = function
       cubes = _;
       game_state = game_state;
     } ->
-    match game_state with
-    | Cube cube_state -> draw_cube_state cube_data cube_state
-    | Menu menu ->
-      draw_cube None cube_data.cube;
-      draw_menu size_x size_y menu
-    | Quit -> ()
+    Graph.mk_proj size_x size_y;
+    Graph.clear black;
+    begin
+      match game_state with
+      | Cube cube_state -> draw_cube_state cube_data cube_state
+      | Menu menu ->
+        draw_cube None cube_data.cube;
+        draw_menu size_x size_y menu
+    end;
+    Graph.swap ();
 ;;
 
 let find_hl_menu mx my menu_entries =
@@ -417,7 +397,7 @@ let find_hl_menu mx my menu_entries =
   loop 0
 ;;
 
-let find_hl mx my = function
+let find_hl_cube mx my = function
   | {
       cube = cube;
       dimension = dimension;
@@ -506,7 +486,7 @@ let handle_event_cube_state size_x size_y cube_data cube_state event =
   match cube_state with
   | Free _ ->
     let hl =
-      find_hl event.Graph.mouse_x event.Graph.mouse_y cube_data in
+      find_hl_cube event.Graph.mouse_x event.Graph.mouse_y cube_data in
     let game_state =
       match event.Graph.event_kind with
       | Graph.Mouse_move -> Cube (Free hl)
@@ -527,12 +507,13 @@ let handle_event_cube_state size_x size_y cube_data cube_state event =
       | Graph.Mouse_up -> Cube (Free hl)
       | Graph.Key '\t' ->
         let entries =
-          [| "RESUME";
-             "SHUFFLE";
-             "SQUAREMINX";
-             "TRIMINX";
-             "QUIT"; |]
-        in
+          [|
+            "RESUME";
+            "SHUFFLE";
+            "SQUAREMINX";
+            "TRIMINX";
+            "QUIT";
+           |] in
         let menu = mk_menu size_x size_y entries in
         let hl =
           find_hl_menu
@@ -577,7 +558,8 @@ let handle_event_cube_state size_x size_y cube_data cube_state event =
           apply_rotation cube_data.cube.Cube.tiles rotation angle in
         let cube = { cube_data.cube with Cube.tiles = tiles; } in
         let hl =
-          find_hl event.Graph.mouse_x event.Graph.mouse_y cube_data in
+          find_hl_cube
+            event.Graph.mouse_x event.Graph.mouse_y cube_data in
         let cube_data = { cube_data with cube = cube; } in
         let cube_state = Free hl in
         cube_data, cube_state
@@ -652,15 +634,14 @@ let handle_event_menu state menu event =
     find_hl_menu
       event.Graph.mouse_x event.Graph.mouse_y menu.menu_entries in
   let menu = { menu with menu_selected = hl; } in
+  let state = { state with game_state = Menu menu; }in
   match event.Graph.event_kind with
-  | Graph.Mouse_move ->
-    { state with game_state = Menu menu; }
-  | Graph.Mouse_down ->
-    { state with game_state = Menu menu; }
+  | Graph.Mouse_move -> continue state
+  | Graph.Mouse_down -> continue state
   | Graph.Mouse_up ->
     begin
       match menu.menu_selected with
-      | None -> { state with game_state = Menu menu; }
+      | None -> continue { state with game_state = Menu menu; }
       | Some index ->
         let entry = menu.menu_entries.(index).entry_text in
         Debug.fdebug
@@ -668,38 +649,42 @@ let handle_event_menu state menu event =
           (fun epf ->
            Format.fprintf epf "entry %S selected" entry);
         match entry with
-        | "RESUME" -> { state with game_state = Cube (Free hl); }
+        | "RESUME" ->
+          continue { state with game_state = Cube (Free hl); }
         | "SHUFFLE" ->
           let cube = shuffle state.cube_data.cube in
           let cube_data = { state.cube_data with cube = cube; } in
           let hl =
-            find_hl event.Graph.mouse_x event.Graph.mouse_y cube_data in
-          {
-            state with
-            cube_data = cube_data;
-            game_state = Cube (Free hl);
-          }
+            find_hl_cube
+              event.Graph.mouse_x event.Graph.mouse_y cube_data in
+          let state =
+            {
+              state with
+              cube_data = cube_data;
+              game_state = Cube (Free hl);
+            } in
+          continue state
         | "SQUAREMINX" ->
           let state = switch_to_cube "Squareminx-4-3" state in
           let hl =
-            find_hl
+            find_hl_cube
               event.Graph.mouse_x event.Graph.mouse_y state.cube_data in
-          { state with game_state = Cube (Free hl); }
+          continue { state with game_state = Cube (Free hl); }
         | "TRIMINX" ->
           let state = switch_to_cube "Triminx-3-2" state in
           let hl =
-            find_hl
+            find_hl_cube
               event.Graph.mouse_x event.Graph.mouse_y state.cube_data in
-          { state with game_state = Cube (Free hl); }
-        | "QUIT" -> { state with game_state = Quit; }
+          continue { state with game_state = Cube (Free hl); }
+        | "QUIT" -> quit state
         | _ -> assert false
     end
   | Graph.Key '\t' ->
     let hl =
-      find_hl event.Graph.mouse_x event.Graph.mouse_y state.cube_data in
-    { state with game_state = Cube (Free hl); }
-  | Graph.Key _ ->
-    { state with game_state = Menu menu; }
+      find_hl_cube
+        event.Graph.mouse_x event.Graph.mouse_y state.cube_data in
+    continue { state with game_state = Cube (Free hl); }
+  | Graph.Key _ -> continue state
   | Graph.Window_resize _ ->
     let menu =
       mk_menu
@@ -709,7 +694,7 @@ let handle_event_menu state menu event =
       find_hl_menu
         event.Graph.mouse_x event.Graph.mouse_y menu.menu_entries in
     let menu = { menu with menu_selected = hl; } in
-    { state with game_state = Menu menu; }
+    continue { state with game_state = Menu menu; }
 ;;
 
 let handle_event state event =
@@ -719,42 +704,39 @@ let handle_event state event =
       handle_event_cube_state
         state.size_x state.size_y
         state.cube_data cube_state event in
-    {
-      state with
-      cube_data = cube_data;
-      game_state = game_state;
-    }
+    let state =
+      {
+        state with
+        cube_data = cube_data;
+        game_state = game_state;
+      } in
+    continue state
   | Menu menu -> handle_event_menu state menu event
-  | Quit -> assert false (* state *)
 ;;
 
 let rec loop state =
-  Graph.mk_proj state.size_x state.size_y;
-  Graph.clear (Graph.rgb 0 0 0);
   draw_state state;
-  Graph.swap ();
   let event = Graph.wait_next_event () in
   if
     event.Graph.event_kind <> Graph.Key 'q'
     && event.Graph.event_kind <> Graph.Key '\027'
   then
-    match event.Graph.event_kind with
-    | Graph.Mouse_move
-    | Graph.Mouse_down
-    | Graph.Mouse_up
-    | Graph.Key _ ->
-      let state = handle_event state event in
-      if state.game_state <> Quit then
-        loop state
-    | Graph.Window_resize (size_x, size_y) ->
-      let state = {
+    let state =
+      match event.Graph.event_kind with
+      | Graph.Mouse_move
+      | Graph.Mouse_down
+      | Graph.Mouse_up
+      | Graph.Key _ -> state
+      | Graph.Window_resize (size_x, size_y) ->
+        {
           state with
           size_x = size_x;
           size_y = size_y;
         } in
-      let state = handle_event state event in
-      if state.game_state <> Quit then
-        loop state
+    let action = handle_event state event in
+    match action.action_kind with
+    | Continue -> loop action.state
+    | Quit -> ()
 ;;
 
 let merge_dimension dimension x y =
@@ -839,7 +821,7 @@ let main_loop size_x size_y mouse_x mouse_y =
       game_state = Cube (Free None);
     } in
   let state = switch_to_cube "Squareminx-4-3" state in
-  let hl = find_hl mouse_x mouse_y state.cube_data in
+  let hl = find_hl_cube mouse_x mouse_y state.cube_data in
   let state = { state with game_state = Cube (Free hl); } in
   loop state
 ;;

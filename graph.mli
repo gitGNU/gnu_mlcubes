@@ -33,6 +33,15 @@ type event =
   }
 ;;
 
+type rect =
+  {
+    left : int;
+    bottom : int;
+    width : int;
+    height : int;
+  }
+;;
+
 val with_graph : string -> (int -> int -> int -> int -> 'a) -> 'a;;
 
 val rgb : int -> int -> int -> color;;
@@ -65,3 +74,10 @@ val fill_poly : Geometry.vector array -> color -> unit;;
 
 val wait_next_event : unit -> event;;
 
+val fill_rect : color -> rect -> unit;;
+
+val text_size : string -> int * int;;
+
+val draw_string :
+  int -> int -> color -> color -> int -> string -> unit
+;;
