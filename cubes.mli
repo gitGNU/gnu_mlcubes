@@ -18,3 +18,5 @@
 val mk_square_minx_4_3 : unit -> Cube.t;;
 
 val mk_triminx_3_2 : unit -> Cube.t;;
+
+val mk_triminx_4_3 : unit -> Cube.t;;

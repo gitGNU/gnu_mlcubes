@@ -510,8 +510,9 @@ let handle_event_cube_state size_x size_y cube_data cube_state event =
           [|
             "RESUME";
             "SHUFFLE";
-            "SQUAREMINX";
-            "TRIMINX";
+            "SQUAREMINX 4-3";
+            "TRIMINX 3-2";
+            "TRIMINX 4-3";
             "QUIT";
            |] in
         let menu = mk_menu size_x size_y entries in
@@ -664,14 +665,16 @@ let handle_event_menu state menu event =
               game_state = Cube (Free hl);
             } in
           continue state
-        | "SQUAREMINX" ->
-          let state = switch_to_cube "Squareminx-4-3" state in
-          let hl =
-            find_hl_cube
-              event.Graph.mouse_x event.Graph.mouse_y state.cube_data in
-          continue { state with game_state = Cube (Free hl); }
-        | "TRIMINX" ->
-          let state = switch_to_cube "Triminx-3-2" state in
+        | "SQUAREMINX 4-3"
+        | "TRIMINX 3-2"
+        | "TRIMINX 4-3" as cube_name ->
+          let cube_name =
+            match cube_name with
+            | "SQUAREMINX 4-3" -> "Squareminx-4-3"
+            | "TRIMINX 3-2" -> "Triminx-3-2"
+            | "TRIMINX 4-3" -> "Triminx-4-3"
+            | _ -> assert false in
+          let state = switch_to_cube cube_name state in
           let hl =
             find_hl_cube
               event.Graph.mouse_x event.Graph.mouse_y state.cube_data in
@@ -794,33 +797,36 @@ let get_dimension = function
 ;;
 
 let main_loop size_x size_y mouse_x mouse_y =
-  let cube0 = Cubes.mk_square_minx_4_3 () in
-  let cube1 = Cubes.mk_triminx_3_2 () in
-  let dimension0 = get_dimension cube0 in
-  let dimension1 = get_dimension cube1 in
-  let mk_cube cube dimension =
+  let mk_cube cube =
+    let dimension = get_dimension cube in
     {
       cube = cube;
       dimension = dimension;
     } in
   let cubes =
-    Maps.String.add
-      "Triminx-3-2" (mk_cube cube1 dimension1)
-      Maps.String.empty in
+    let list =
+      [
+        "Squareminx-4-3", Cubes.mk_square_minx_4_3;
+        "Triminx-3-2", Cubes.mk_triminx_3_2;
+        "Triminx-4-3", Cubes.mk_triminx_4_3;
+      ] in
+    List.fold_left
+      (fun cubes (name, cube) ->
+       Maps.String.add name (mk_cube (cube ())) cubes)
+      Maps.String.empty
+      list in
+  let cube_name = "Squareminx-4-3" in
+  let cube_data = Maps.String.find cube_name cubes in
   let state =
     {
       size_x = size_x;
       size_y = size_y;
-      cube_name = "Squareminx-4-3";
-      cube_data =
-        {
-          cube = cube0;
-          dimension = dimension0;
-        };
+      cube_name = cube_name;
+      cube_data = cube_data;
       cubes = cubes;
       game_state = Cube (Free None);
     } in
-  let state = switch_to_cube "Squareminx-4-3" state in
+  let state = switch_to_cube cube_name state in
   let hl = find_hl_cube mouse_x mouse_y state.cube_data in
   let state = { state with game_state = Cube (Free hl); } in
   loop state

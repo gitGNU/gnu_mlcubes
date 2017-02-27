@@ -122,17 +122,17 @@ let mk_triminx_3_2 () =
     +/ int r */ h in
   let indices =
     [
-      0, true, 2, 0;
-      1, true, 1, 0;
-      2, false, 1, 0;
-      3, true, 1, 1;
-      4, true, 0, 0;
-      5, false, 0, 0;
-      6, true, 0, 1;
-      7, false, 0, 1;
-      8, true, 0, 2;
+      0, true, 2, 0, 0;
+      1, true, 1, 0, 1;
+      2, false, 1, 0, 0;
+      3, true, 1, 1, 0;
+      4, true, 0, 0, 2;
+      5, false, 0, 0, 1;
+      6, true, 0, 1, 1;
+      7, false, 0, 1, 0;
+      8, true, 0, 2, 0;
     ] in
-  let mk_polygon r g b =
+  let mk_polygon color =
     { Cube.
       points =
         [
@@ -140,27 +140,30 @@ let mk_triminx_3_2 () =
           int 1 // int 2, int 0 -/ h // int 3;
           int 0, int 2 */ h // int 3;
         ];
-      color = r, g, b;
+      color = color;
     } in
-  let mk_tile i =
-    let polygon =
-      if i then
-        mk_polygon 255 0 0
-      else
-        mk_polygon 0 255 0 in
+  let colors =
+    [|
+      255, 0, 0;
+      0, 255, 0;
+      255, 255, 0;
+     |] in
+  let mk_tile i color_index =
+    let color = colors.(color_index) in
+    let polygon = mk_polygon color in
     { Cube.
       orientation = (if i then 0 else 3), 6;
       polygons = [ polygon; ];
     } in
   let positions, tiles =
     List.fold_left
-      (fun (positions, tiles) (i, direct, r, c) ->
+      (fun (positions, tiles) (i, direct, r, c, color_index) ->
        let position =
          if direct then
            mk_pos r c
          else
            mk_ipos r c in
-       let tile = mk_tile direct in
+       let tile = mk_tile direct color_index in
        Maps.Int.add i position positions,
        Maps.Int.add i tile tiles)
       (Maps.Int.empty, Maps.Int.empty)
@@ -210,6 +213,125 @@ let mk_triminx_3_2 () =
       order = 6;
     } in
   let rotations = Maps.Int.add 3 center_rotation rotations in
+  let skeleton =
+    { Cube.
+      positions = positions;
+      rotations = rotations;
+    } in
+  { Cube.
+    skeleton = skeleton;
+    tiles = tiles;
+  }
+;;
+
+let mk_triminx_4_3 () =
+  let h = sqrt (int 3) // int 2 in
+  let mk_pos r c =
+    int 1 // int 2
+    +/ int r // int 2
+    +/ int c,
+    sqrt (int 3) // int 6
+    +/ int r */ h in
+  let mk_ipos r c =
+    int 1
+    +/ int r // int 2
+    +/ int c,
+    sqrt (int 3) // int 3
+    +/ int r */ h in
+  let indices =
+    [
+      0, true , 3, 0, 0;
+      1, true , 2, 0, 0;
+      2, false, 2, 0, 0;
+      3, true , 2, 1, 0;
+      4, true , 1, 0, 1;
+      5, false, 1, 0, 2;
+      6, true , 1, 1, 2;
+      7, false, 1, 1, 2;
+      8, true , 1, 2, 3;
+      9, true , 0, 0, 1;
+      10, false, 0, 0, 1;
+      11, true , 0, 1, 1;
+      12, false, 0, 1, 2;
+      13, true , 0, 2, 3;
+      14, false, 0, 2, 3;
+      15, true , 0, 3, 3;
+    ] in
+  let mk_polygon color =
+    { Cube.
+      points =
+        [
+          int 0 -/ int 1 // int 2, int 0 -/ h // int 3;
+          int 1 // int 2, int 0 -/ h // int 3;
+          int 0, int 2 */ h // int 3;
+        ];
+      color = color;
+    } in
+  let colors =
+    [|
+      255, 0, 0;
+      0, 255, 0;
+      255, 255, 0;
+      0, 0, 255;
+     |] in
+  let mk_tile i color_index =
+    let color = colors.(color_index) in
+    let polygon = mk_polygon color in
+    { Cube.
+      orientation = (if i then 0 else 3), 6;
+      polygons = [ polygon; ];
+    } in
+  let positions, tiles =
+    List.fold_left
+      (fun (positions, tiles) (i, direct, r, c, color_index) ->
+       let position =
+         if direct then
+           mk_pos r c
+         else
+           mk_ipos r c in
+       let tile = mk_tile direct color_index in
+       Maps.Int.add i position positions,
+       Maps.Int.add i tile tiles)
+      (Maps.Int.empty, Maps.Int.empty)
+      indices in
+  let rotations =
+    let rotation0 =
+      { Cube.
+        center = Expr.int 2, Expr.int 2 */ h;
+        cycles =
+          [
+            [| 0; 4; 8; |];
+            [| 2; 5; 7; |];
+            [| 1; 6; 3; |];
+          ];
+        order = 3;
+      } in
+    let rotation1 =
+      { Cube.
+        center = Expr.int 3 // Expr.int 2, h;
+        cycles =
+          [
+            [| 1; 9; 13; |];
+            [| 5; 10; 12; |];
+            [| 4; 11; 6; |];
+          ];
+        order = 3;
+      } in
+    let rotation2 =
+      { Cube.
+        center = Expr.Int 5 // Expr.Int 2, h;
+        cycles =
+          [
+            [| 3; 11; 15; |];
+            [| 6; 13; 8; |];
+            [| 7; 12; 14; |];
+          ];
+        order = 3;
+      } in
+    List.fold_left
+      (fun rotations (i, rotation) -> Maps.Int.add i rotation rotations)
+      Maps.Int.empty
+      [ 0, rotation0; 1, rotation1; 2, rotation2; ] in
   let skeleton =
     { Cube.
       positions = positions;
