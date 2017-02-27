@@ -15,20 +15,6 @@
 (* along with mlcubes. If not, see <http://www.gnu.org/licenses/>.    *)
 (**********************************************************************)
 
-type locked =
-  {
-    locked_hl : int;
-    locked_x : int;
-    locked_y : int;
-    locked_angle : float;
-  }
-;;
-
-type mouse_state =
-  | Free of int option
-  | Locked of locked
-;;
-
 type dimension =
   {
     max_x : float;
@@ -38,26 +24,68 @@ type dimension =
   }
 ;;
 
-type state =
+type rect =
   {
-    cube : Cube.t;
-    dimension : dimension;
-    mouse_state : mouse_state;
+    left : int;
+    bottom : int;
+    width : int;
+    height : int;
   }
 ;;
 
-type event_kind =
-  | Mouse_move
-  | Mouse_down
-  | Mouse_up
-  | Key of char
+type menu_entry =
+  {
+    entry_text : string;
+    entry_rect : rect;
+    entry_text_left : int;
+    entry_text_bottom : int;
+  }
 ;;
 
-type event =
+type menu =
   {
-    mouse_x : int;
-    mouse_y : int;
-    event_kind : event_kind;
+    menu_scale : int;
+    menu_rect : rect;
+    menu_entries : menu_entry array;
+    menu_selected : int option;
+  }
+;;
+
+type locked =
+  {
+    locked_hl : int;
+    locked_x : int;
+    locked_y : int;
+    locked_angle : float;
+  }
+;;
+
+type cube_state =
+  | Free of int option
+  | Locked of locked
+;;
+
+type game_state =
+  | Cube of cube_state
+  | Menu of menu
+  | Quit
+;;
+
+type cube_data =
+  {
+    cube : Cube.t;
+    dimension : dimension;
+  }
+;;
+
+type state =
+  {
+    size_x : int;
+    size_y : int;
+    cube_name : string;
+    cube_data : cube_data;
+    cubes : cube_data Maps.String.t;
+    game_state : game_state;
   }
 ;;
 
@@ -77,85 +105,9 @@ and ( mod ) a b =
     r
 ;;
 
-let mk_square_minx_4_3 () =
-  let positions =
-    let rec add_positions positions = function
-      | 16 -> positions
-      | i ->
-        let r = i / 4 in
-        let c = i mod 4 in
-        let x = Expr.int (2 * c - 3) in
-        let y = Expr.int (3 - 2 * r) in
-        let positions = Maps.Int.add i (x, y) positions in
-        add_positions positions (succ i) in
-    add_positions Maps.Int.empty 0 in
-  let rotations =
-    let mk_rotation dr dc =
-      let mk_index i = i + dc + 4 * dr in
-      let mk_cycle cycle = Array.map mk_index cycle in
-      { Cube.
-        center = Expr.int (2 * dc - 1), Expr.int (1 - 2 * dr);
-        cycles =
-          Common.map
-            mk_cycle
-            [
-              [| 0; 8; 10; 2; |];
-              [| 1; 4; 9; 6; |];
-              [| 5; |];
-            ];
-        order = 4;
-      } in
-    let add_rotation rotations (i, dr, dc) =
-      let rotation = mk_rotation dr dc in
-      Maps.Int.add i rotation rotations in
-    List.fold_left
-      add_rotation
-      Maps.Int.empty
-      [
-        0, 0, 0;
-        1, 0, 1;
-        2, 1, 0;
-        3, 1, 1;
-      ] in
-  let skeleton =
-    { Cube.
-      positions = positions;
-      rotations = rotations;
-    } in
-  let tiles =
-    let color_of_tile = function
-      | 0 | 1 | 4 | 5 -> 255, 0, 0
-      | 2 | 3 | 6 | 7 -> 0, 255, 0
-      | 8 | 9 | 12 | 13 -> 0, 0, 255
-      | 10 | 11 | 14 | 15 -> 255, 255, 0
-      | _ -> assert false in
-    let rec add_tiles tiles = function
-      | 16 -> tiles
-      | i ->
-        let tile =
-          { Cube.
-            orientation = 0, 4;
-            polygons =
-              [
-                { Cube.
-                  points =
-                    [
-                      Expr.int (-1), Expr.int (-1);
-                      Expr.int (1), Expr.int (-1);
-                      Expr.int (1), Expr.int (1);
-                      Expr.int (-1), Expr.int (1);
-                    ];
-                  color = color_of_tile i;
-                };
-              ];
-          } in
-        let tiles = Maps.Int.add i tile tiles in
-        add_tiles tiles (succ i) in
-    add_tiles Maps.Int.empty 0 in
-  { Cube.
-    skeleton = skeleton;
-    tiles = tiles;
-  }
+let rect_contains rect mx my =
+  mx >= rect.left && mx < rect.left + rect.width
+  && my >= rect.bottom && my < rect.bottom + rect.height
 ;;
 
 let get_color is_hl r g b =
@@ -167,7 +119,7 @@ let get_color is_hl r g b =
   let r = t r in
   let g = t g in
   let b = t b in
-  Graphics.rgb r g b
+  Graph.rgb r g b
 ;;
 
 let draw_polygon is_hl = function
@@ -182,7 +134,7 @@ let draw_polygon is_hl = function
     let points =
       Array.of_list (Common.map vector_of_point points) in
     Graph.fill_poly points (get_color is_hl r g b);
-    Graph.draw_poly points (Graphics.rgb 0 0 0)
+    Graph.draw_poly points (Graph.rgb 0 0 0)
 ;;
 
 let draw_tile position is_hl = function
@@ -285,29 +237,190 @@ let get_angle cx cy lx ly mx my =
           atan2 s c))
 ;;
 
+let draw_cube_state cube_data cube_state =
+  let hl_angle_opt =
+    match cube_state with
+    | Free hl ->
+      begin
+        match hl with
+        | None -> None
+        | Some hl -> Some (hl, 0.0)
+      end
+    | Locked locked -> Some (locked.locked_hl, locked.locked_angle) in
+  draw_cube hl_angle_opt cube_data.cube
+;;
+
+let mk_menu size_x size_y entries =
+  let hpad = 21 in
+  let vpad = 5 in
+  let w, h =
+    Array.fold_left
+      (fun (w, h) t ->
+       let tw, th = Graphics.text_size t in
+       max w tw, max h th)
+      (0, 0)
+      entries in
+  let fw = w + 2 * hpad + 2 in
+  let fh = Array.length entries * (h + 2 * vpad) + 2 in
+  let scale =
+    let scale_x = size_x / fw in
+    let scale_y = size_y / fh in
+    min scale_x scale_y in
+  let scale = max 1 (scale / 2) in
+  let fw = scale * fw in
+  let fh = scale * fh in
+  let x0 = (size_x - fw) / 2 in
+  let y0 = (size_y - fh) / 2 in
+  let menu_rect =
+    {
+      left = x0;
+      bottom = y0;
+      width = fw;
+      height = fh;
+    } in
+  let menu_entries =
+    Array.mapi
+      (fun ai text ->
+       let gi = Array.length entries - ai - 1 in
+       let rect =
+         {
+           left = x0 + scale;
+           bottom = y0 + scale + gi * scale * (h + 2 * vpad);
+           width = fw - 2 * scale;
+           height = scale * (h + 2 * vpad);
+         } in
+       {
+         entry_text = text;
+         entry_rect = rect;
+         entry_text_left = x0 + scale * (1 + hpad);
+         entry_text_bottom =
+           y0 + scale * (1 + vpad + gi * (h + 2 * vpad));
+       })
+      entries in
+  {
+    menu_scale = scale;
+    menu_rect = menu_rect;
+    menu_entries = menu_entries;
+    menu_selected = None;
+  }
+;;
+
+let with_rect mthd r g b = function
+  | {
+      left = left;
+      bottom = bottom;
+      width = width;
+      height = height;
+    } ->
+    Graphics.set_color (Graphics.rgb r g b);
+    mthd left bottom width height
+;;
+
+let fill_rect = with_rect Graphics.fill_rect;;
+
+let draw_string =
+  let mem = Hashtbl.create 10 in
+  let draw_string bg fg scale text =
+    let x, y = Graphics.current_point () in
+    begin
+      if not (Hashtbl.mem mem (bg, fg, scale, text)) then
+        let w, h = Graphics.text_size text in
+        let old = Graphics.get_image 0 0 w h in
+        Graphics.set_color bg;
+        Graphics.fill_rect 0 0 w h;
+        Graphics.moveto 0 0;
+        Graphics.set_color fg;
+        Graphics.draw_string text;
+        let text_image = Graphics.get_image 0 0 w h in
+        Graphics.draw_image old 0 0;
+        let dump = Graphics.dump_image text_image in
+        let scaled =
+          Array.init
+            (scale * Array.length dump)
+            (fun i ->
+             Array.init
+               (scale * Array.length dump.(0))
+               (fun j ->
+                dump.(i / scale).(j / scale))) in
+        Hashtbl.add
+          mem (bg, fg, scale, text) (Graphics.make_image scaled);
+        Graphics.moveto x y
+    end;
+    Graphics.draw_image (Hashtbl.find mem (bg, fg, scale, text)) x y in
+  draw_string
+;;
+
+let draw_menu _size_x _size_y = function
+  | {
+      menu_scale = menu_scale;
+      menu_rect = menu_rect;
+      menu_entries = menu_entries;
+      menu_selected = menu_selected;
+    } ->
+    fill_rect 0 255 0 menu_rect;
+    let inner_rect =
+      {
+        left = menu_rect.left + menu_scale;
+        bottom = menu_rect.bottom + menu_scale;
+        width = menu_rect.width - 2 * menu_scale;
+        height = menu_rect.height - 2 * menu_scale;
+      } in
+    fill_rect 0 0 0 inner_rect;
+    Array.iteri
+      (fun ai ->
+       function
+       | {
+           entry_text = text;
+           entry_rect = rect;
+           entry_text_left = x;
+           entry_text_bottom = y;
+         } ->
+         let bg, fg =
+           if Some ai = menu_selected then
+             begin
+               fill_rect 0 255 0 rect;
+               Graphics.rgb 0 255 0, Graphics.rgb 0 0 0
+             end
+           else
+             Graphics.rgb 0 0 0, Graphics.rgb 0 255 0 in
+         Graphics.moveto x y;
+         draw_string bg fg menu_scale text)
+      menu_entries
+;;
+
 let draw_state = function
   | {
-      cube = cube;
-      dimension = _;
-      mouse_state = mouse_state;
+      size_x = size_x;
+      size_y = size_y;
+      cube_name = _;
+      cube_data = cube_data;
+      cubes = _;
+      game_state = game_state;
     } ->
-    let hl_angle_opt =
-      match mouse_state with
-      | Free hl ->
-        begin
-          match hl with
-          | None -> None
-          | Some hl -> Some (hl, 0.0)
-        end
-      | Locked locked -> Some (locked.locked_hl, locked.locked_angle) in
-    draw_cube hl_angle_opt cube
+    match game_state with
+    | Cube cube_state -> draw_cube_state cube_data cube_state
+    | Menu menu ->
+      draw_cube None cube_data.cube;
+      draw_menu size_x size_y menu
+    | Quit -> ()
+;;
+
+let find_hl_menu mx my menu_entries =
+  let len = Array.length menu_entries in
+  let rec loop i =
+    if i = len then
+      None
+    else if rect_contains menu_entries.(i).entry_rect mx my then
+      Some i
+    else
+      loop (succ i) in
+  loop 0
 ;;
 
 let find_hl mx my = function
   | {
       cube = cube;
       dimension = dimension;
-      mouse_state = _;
     } ->
     let min_x, min_y =
       Graph.project [| dimension.min_x; dimension.min_y; 1.0; |] in
@@ -344,7 +457,10 @@ let find_hl mx my = function
              hl, dist2)
           rotations
           (-1, max_int) in
-      Some hl
+      if hl = -1 then
+        None
+      else
+        Some hl
     else
       None
 ;;
@@ -386,186 +502,259 @@ let apply_rotation tiles rotation count =
     tiles
 ;;
 
-let handle_event state event =
-  match state.mouse_state with
+let handle_event_cube_state size_x size_y cube_data cube_state event =
+  match cube_state with
   | Free _ ->
-    let hl = find_hl event.mouse_x event.mouse_y state in
-    let mouse_state =
-      match event.event_kind with
-      | Mouse_move -> Free hl
-      | Mouse_down ->
+    let hl =
+      find_hl event.Graph.mouse_x event.Graph.mouse_y cube_data in
+    let game_state =
+      match event.Graph.event_kind with
+      | Graph.Mouse_move -> Cube (Free hl)
+      | Graph.Mouse_down ->
         begin
           match hl with
-          | None -> Free None
+          | None -> Cube (Free None)
           | Some hl ->
             let locked =
               {
                 locked_hl = hl;
-                locked_x = event.mouse_x;
-                locked_y = event.mouse_y;
+                locked_x = event.Graph.mouse_x;
+                locked_y = event.Graph.mouse_y;
                 locked_angle = 0.0;
               } in
-            Locked locked
+            Cube (Locked locked)
         end
-      | Mouse_up -> Free hl
-      | Key _ -> Free hl in
-    {
-      state with mouse_state = mouse_state;
-    }
+      | Graph.Mouse_up -> Cube (Free hl)
+      | Graph.Key '\t' ->
+        let entries =
+          [| "RESUME";
+             "SHUFFLE";
+             "SQUAREMINX";
+             "TRIMINX";
+             "QUIT"; |]
+        in
+        let menu = mk_menu size_x size_y entries in
+        let hl =
+          find_hl_menu
+            event.Graph.mouse_x event.Graph.mouse_y menu.menu_entries in
+        let menu = { menu with menu_selected = hl; } in
+        Menu menu
+      | Graph.Key _ -> Cube (Free hl)
+      | Graph.Window_resize (_, _) -> Cube (Free hl) in
+    cube_data, game_state
   | Locked locked ->
     let rotation =
       Maps.Int.find
         locked.locked_hl
-        state.cube.Cube.skeleton.Cube.rotations in
+        cube_data.cube.Cube.skeleton.Cube.rotations in
     let angle =
       let cx, cy = rotation.Cube.center in
       get_angle
         cx cy
         locked.locked_x locked.locked_y
-        event.mouse_x event.mouse_y in
-    match event.event_kind with
-    | Mouse_move ->
-      let locked =
-        {
-          locked with
-          locked_angle = angle;
-        } in
-      let mouse_state = Locked locked in
-      { state with mouse_state = mouse_state; }
-    | Mouse_down -> assert false
-    | Mouse_up ->
-      let order = rotation.Cube.order in
-      let angle = float order *. angle /. (2.0 *. pi) in
-      let angle = Common.int angle in
-      let angle =
-        if angle < 0 then
-          angle + order
-        else
-          angle in
-      let tiles =
-        apply_rotation state.cube.Cube.tiles rotation angle in
-      let cube = { state.cube with Cube.tiles = tiles; } in
-      let hl = find_hl event.mouse_x event.mouse_y state in
-      {
-        state with
-        cube = cube;
-        mouse_state = Free hl;
-      }
-    | Key _ ->
-      let locked =
-        {
-          locked with
-          locked_angle = angle;
-        } in
-      let mouse_state = Locked locked in
-      { state with mouse_state = mouse_state; }
+        event.Graph.mouse_x event.Graph.mouse_y in
+    let cube_data, cube_state =
+      match event.Graph.event_kind with
+      | Graph.Mouse_move ->
+        let locked =
+          {
+            locked with
+            locked_angle = angle;
+          } in
+        let cube_state = Locked locked in
+        cube_data, cube_state
+      | Graph.Mouse_down -> assert false
+      | Graph.Mouse_up ->
+        let order = rotation.Cube.order in
+        let angle = float order *. angle /. (2.0 *. pi) in
+        let angle = Common.int angle in
+        let angle =
+          if angle < 0 then
+            angle + order
+          else
+            angle in
+        let tiles =
+          apply_rotation cube_data.cube.Cube.tiles rotation angle in
+        let cube = { cube_data.cube with Cube.tiles = tiles; } in
+        let hl =
+          find_hl event.Graph.mouse_x event.Graph.mouse_y cube_data in
+        let cube_data = { cube_data with cube = cube; } in
+        let cube_state = Free hl in
+        cube_data, cube_state
+      | Graph.Key _ ->
+        let locked =
+          {
+            locked with
+            locked_angle = angle;
+          } in
+        cube_data, Locked locked
+      | Graph.Window_resize _ ->
+        let locked =
+          {
+            locked with
+            locked_angle = angle;
+          } in
+        cube_data, Locked locked in
+    cube_data, Cube cube_state
 ;;
 
-let debug_raw_event = function
-  | { Graphics.
-      mouse_x = mouse_x;
-      mouse_y = mouse_y;
-      button = button;
-      keypressed = keypressed;
-      key = key;
+let shuffle = function
+  | { Cube.
+      skeleton = skeleton;
+      tiles = tiles;
+    } as cube ->
+    let rotations = Maps.Int.bindings skeleton.Cube.rotations in
+    let rotations = Array.of_list (Common.map snd rotations) in
+    let l = Array.length rotations in
+    let rec loop tiles = function
+      | 0 -> tiles
+      | k ->
+        let rotation = rotations.(Random.int l) in
+        let count = Random.int rotation.Cube.order in
+        let tiles = apply_rotation tiles rotation count in
+        loop tiles (pred k) in
+    let tiles = loop tiles (500 + Random.int 500) in
+    { cube with Cube.tiles = tiles; }
+;;
+
+let adjust_to_dimension = function
+  | {
+      max_x = max_x;
+      max_y = max_y;
+      min_x = min_x;
+      min_y = min_y;
     } ->
-    Debug.fdebug
-      3
-      (fun epf ->
-       Debug.debug_sexp
-         epf
-         (fun epf ->
-          Format.fprintf
-            epf "RAWEVENT@ %d@ %d@ %B @ %B@ %C"
-            mouse_x mouse_y button keypressed key))
+    let cx = (min_x +. max_x) /. 2.0 in
+    let cy = (min_y +. max_y) /. 2.0 in
+    let dx = max_x -. min_x in
+    let dy = max_y -. min_y in
+    Graph.load_id ();
+    Graph.scale (0.9 *. sqrt 2.0 /. max dx dy);
+    Graph.translate (-. cx) (-. cy)
 ;;
 
-let debug_event event =
-  Debug.fdebug
-    2
-    (fun epf ->
-     Debug.debug_sexp
-       epf
-       (fun epf ->
-        Format.fprintf
-          epf "EVENT@ %d@ %d@ %t"
-          event.mouse_x event.mouse_y
+let switch_to_cube cube_name state =
+  let cubes =
+    Maps.String.add state.cube_name state.cube_data state.cubes in
+  let cube_data = Maps.String.find cube_name cubes in
+  let cubes = Maps.String.remove cube_name cubes in
+  adjust_to_dimension cube_data.dimension;
+  {
+    state with
+    cube_name = cube_name;
+    cube_data = cube_data;
+    cubes = cubes;
+  }
+;;
+
+let handle_event_menu state menu event =
+  let hl =
+    find_hl_menu
+      event.Graph.mouse_x event.Graph.mouse_y menu.menu_entries in
+  let menu = { menu with menu_selected = hl; } in
+  match event.Graph.event_kind with
+  | Graph.Mouse_move ->
+    { state with game_state = Menu menu; }
+  | Graph.Mouse_down ->
+    { state with game_state = Menu menu; }
+  | Graph.Mouse_up ->
+    begin
+      match menu.menu_selected with
+      | None -> { state with game_state = Menu menu; }
+      | Some index ->
+        let entry = menu.menu_entries.(index).entry_text in
+        Debug.fdebug
+          1
           (fun epf ->
-           match event.event_kind with
-           | Mouse_move -> Format.fprintf epf "MOVE"
-           | Mouse_down -> Format.fprintf epf "DOWN"
-           | Mouse_up -> Format.fprintf epf "UP"
-           | Key k ->
-             Debug.debug_sexp
-               epf
-               (fun epf -> Format.fprintf epf "KEY@ %C" k))))
+           Format.fprintf epf "entry %S selected" entry);
+        match entry with
+        | "RESUME" -> { state with game_state = Cube (Free hl); }
+        | "SHUFFLE" ->
+          let cube = shuffle state.cube_data.cube in
+          let cube_data = { state.cube_data with cube = cube; } in
+          let hl =
+            find_hl event.Graph.mouse_x event.Graph.mouse_y cube_data in
+          {
+            state with
+            cube_data = cube_data;
+            game_state = Cube (Free hl);
+          }
+        | "SQUAREMINX" ->
+          let state = switch_to_cube "Squareminx-4-3" state in
+          let hl =
+            find_hl
+              event.Graph.mouse_x event.Graph.mouse_y state.cube_data in
+          { state with game_state = Cube (Free hl); }
+        | "TRIMINX" ->
+          let state = switch_to_cube "Triminx-3-2" state in
+          let hl =
+            find_hl
+              event.Graph.mouse_x event.Graph.mouse_y state.cube_data in
+          { state with game_state = Cube (Free hl); }
+        | "QUIT" -> { state with game_state = Quit; }
+        | _ -> assert false
+    end
+  | Graph.Key '\t' ->
+    let hl =
+      find_hl event.Graph.mouse_x event.Graph.mouse_y state.cube_data in
+    { state with game_state = Cube (Free hl); }
+  | Graph.Key _ ->
+    { state with game_state = Menu menu; }
+  | Graph.Window_resize _ ->
+    let menu =
+      mk_menu
+        state.size_x state.size_y
+        (Array.map (fun entry -> entry.entry_text) menu.menu_entries) in
+    let hl =
+      find_hl_menu
+        event.Graph.mouse_x event.Graph.mouse_y menu.menu_entries in
+    let menu = { menu with menu_selected = hl; } in
+    { state with game_state = Menu menu; }
 ;;
 
-let wait_next_event =
-  let last_event =
-    ref
-      { Graphics.
-        mouse_x = -1;
-        mouse_y = -1;
-        button = false;
-        keypressed = false;
-        key = '\000';
-      } in
-  let get, register =
-    let events = Queue.create () in
-    let get () =
-      if Queue.is_empty events then
-        None
-      else
-        Some (Queue.take events) in
-    let register raw_event event =
-      let mouse_x = raw_event.Graphics.mouse_x in
-      let mouse_y = raw_event.Graphics.mouse_y in
-      let event = {
-          mouse_x = mouse_x;
-          mouse_y = mouse_y;
-          event_kind = event;
-        } in
-      Queue.add event events in
-    get, register in
-  let rec wait () =
-    match get () with
-    | None ->
-      let event =
-        Graphics.wait_next_event
-          [
-            Graphics.Button_down;
-            Graphics.Button_up;
-            Graphics.Key_pressed;
-            Graphics.Mouse_motion;
-          ] in
-      debug_raw_event event;
-      if event.Graphics.mouse_x <> !last_event.Graphics.mouse_x
-         || event.Graphics.mouse_y <> !last_event.Graphics.mouse_y then
-        register event Mouse_move;
-      if event.Graphics.keypressed then
-        register event (Key event.Graphics.key);
-      if event.Graphics.button <> !last_event.Graphics.button then
-        register
-          event
-          (if event.Graphics.button then Mouse_down else Mouse_up);
-      last_event := event;
-      wait ()
-    | Some event ->
-      debug_event event;
-      event in
-  wait
+let handle_event state event =
+  match state.game_state with
+  | Cube cube_state ->
+    let cube_data, game_state =
+      handle_event_cube_state
+        state.size_x state.size_y
+        state.cube_data cube_state event in
+    {
+      state with
+      cube_data = cube_data;
+      game_state = game_state;
+    }
+  | Menu menu -> handle_event_menu state menu event
+  | Quit -> assert false (* state *)
 ;;
 
 let rec loop state =
-  Graph.mk_proj ();
-  Graph.clear 0 0 0;
+  Graph.mk_proj state.size_x state.size_y;
+  Graph.clear (Graph.rgb 0 0 0);
   draw_state state;
   Graph.swap ();
-  let event = wait_next_event () in
-  if event.event_kind <> Key 'q' then
-    let state = handle_event state event in
-    loop state
+  let event = Graph.wait_next_event () in
+  if
+    event.Graph.event_kind <> Graph.Key 'q'
+    && event.Graph.event_kind <> Graph.Key '\027'
+  then
+    match event.Graph.event_kind with
+    | Graph.Mouse_move
+    | Graph.Mouse_down
+    | Graph.Mouse_up
+    | Graph.Key _ ->
+      let state = handle_event state event in
+      if state.game_state <> Quit then
+        loop state
+    | Graph.Window_resize (size_x, size_y) ->
+      let state = {
+          state with
+          size_x = size_x;
+          size_y = size_y;
+        } in
+      let state = handle_event state event in
+      if state.game_state <> Quit then
+        loop state
 ;;
 
 let merge_dimension dimension x y =
@@ -622,59 +811,37 @@ let get_dimension = function
       dimension
 ;;
 
-let main_loop () =
-  Graphics.set_window_title "mlcubes v0";
-  let mx, my = Graphics.mouse_pos () in
-  let cube = mk_square_minx_4_3 () in
-  let dimension = get_dimension cube in
-  begin
-    match dimension with
-    | {
-        max_x = max_x;
-        max_y = max_y;
-        min_x = min_x;
-        min_y = min_y;
-      } ->
-      let cx = (min_x +. max_x) /. 2.0 in
-      let cy = (min_y +. max_y) /. 2.0 in
-      let dx = max_x -. min_x in
-      let dy = max_y -. min_y in
-      Graph.scale (0.9 *. sqrt 2.0 /. max dx dy);
-      Graph.translate (-. cx) (-. cy)
-  end;
-  Debug.fdebug
-    1
-    (fun epf ->
-     Debug.debug_sexp
-       epf
-       (fun epf ->
-        Format.fprintf
-          epf "DIMENSION@ %f@ %f@ %f@ %f"
-          dimension.min_x dimension.min_y
-          dimension.max_x dimension.max_y));
-  let state =
+let main_loop size_x size_y mouse_x mouse_y =
+  let cube0 = Cubes.mk_square_minx_4_3 () in
+  let cube1 = Cubes.mk_triminx_3_2 () in
+  let dimension0 = get_dimension cube0 in
+  let dimension1 = get_dimension cube1 in
+  let mk_cube cube dimension =
     {
       cube = cube;
       dimension = dimension;
-      mouse_state = Free None;
     } in
-  let hl = find_hl mx my state in
-  let state = { state with mouse_state = Free hl; } in
+  let cubes =
+    Maps.String.add
+      "Triminx-3-2" (mk_cube cube1 dimension1)
+      Maps.String.empty in
+  let state =
+    {
+      size_x = size_x;
+      size_y = size_y;
+      cube_name = "Squareminx-4-3";
+      cube_data =
+        {
+          cube = cube0;
+          dimension = dimension0;
+        };
+      cubes = cubes;
+      game_state = Cube (Free None);
+    } in
+  let state = switch_to_cube "Squareminx-4-3" state in
+  let hl = find_hl mouse_x mouse_y state.cube_data in
+  let state = { state with game_state = Cube (Free hl); } in
   loop state
-;;
-
-let with_graphics f =
-  Graphics.open_graph "";
-  let r =
-    try
-      Graphics.auto_synchronize false;
-      f ()
-    with
-    | x ->
-      Graphics.close_graph ();
-      raise x in
-  Graphics.close_graph ();
-  r
 ;;
 
 let speclist =
@@ -707,7 +874,8 @@ let usage_msg =
 let main () =
   try
     Arg.parse speclist anon_fun usage_msg;
-    with_graphics main_loop;
+    Random.self_init ();
+    Graph.with_graph "mlcubes v0" main_loop;
     0
   with
   | x ->

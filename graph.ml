@@ -15,6 +15,133 @@
 (* along with mlcubes. If not, see <http://www.gnu.org/licenses/>.    *)
 (**********************************************************************)
 
+type color = Graphics.color;;
+
+type event_kind =
+  | Mouse_move
+  | Mouse_down
+  | Mouse_up
+  | Key of char
+  | Window_resize of int * int
+;;
+
+type event =
+  {
+    mouse_x : int;
+    mouse_y : int;
+    event_kind : event_kind;
+  }
+;;
+
+let debug_raw_event = function
+  | { Graphics.
+      mouse_x = mouse_x;
+      mouse_y = mouse_y;
+      button = button;
+      keypressed = keypressed;
+      key = key;
+    } ->
+    Debug.fdebug
+      3
+      (fun epf ->
+       Debug.debug_sexp
+         epf
+         (fun epf ->
+          Format.fprintf
+            epf "RAWEVENT@ %d@ %d@ %B @ %B@ %C"
+            mouse_x mouse_y button keypressed key))
+;;
+
+let debug_event event =
+  Debug.fdebug
+    2
+    (fun epf ->
+     Debug.debug_sexp
+       epf
+       (fun epf ->
+        Format.fprintf
+          epf "EVENT@ %d@ %d@ %t"
+          event.mouse_x event.mouse_y
+          (fun epf ->
+           match event.event_kind with
+           | Mouse_move -> Format.fprintf epf "MOVE"
+           | Mouse_down -> Format.fprintf epf "DOWN"
+           | Mouse_up -> Format.fprintf epf "UP"
+           | Key k ->
+             Debug.debug_sexp
+               epf
+               (fun epf -> Format.fprintf epf "KEY@ %C" k)
+           | Window_resize (w, h) ->
+             Debug.debug_sexp
+               epf
+               (fun epf -> Format.fprintf epf "RESIZE@ %d@ %d" w h))))
+;;
+
+let wait_next_event =
+  let last_dim = ref (-1, -1) in
+  let last_event =
+    ref
+      { Graphics.
+        mouse_x = -1;
+        mouse_y = -1;
+        button = false;
+        keypressed = false;
+        key = '\000';
+      } in
+  let get, register =
+    let events = Queue.create () in
+    let get () =
+      if Queue.is_empty events then
+        None
+      else
+        Some (Queue.take events) in
+    let register raw_event event =
+      let mouse_x = raw_event.Graphics.mouse_x in
+      let mouse_y = raw_event.Graphics.mouse_y in
+      let event = {
+          mouse_x = mouse_x;
+          mouse_y = mouse_y;
+          event_kind = event;
+        } in
+      Queue.add event events in
+    get, register in
+  let rec wait () =
+    match get () with
+    | None ->
+      let event =
+        Graphics.wait_next_event
+          [
+            Graphics.Button_down;
+            Graphics.Button_up;
+            Graphics.Key_pressed;
+            Graphics.Mouse_motion;
+          ] in
+      debug_raw_event event;
+      let (w, h) as dim = Graphics.size_x (), Graphics.size_y () in
+      if dim <> !last_dim then
+        begin
+          last_dim := dim;
+          register event (Window_resize (w, h))
+        end;
+      if event.Graphics.mouse_x <> !last_event.Graphics.mouse_x
+         || event.Graphics.mouse_y <> !last_event.Graphics.mouse_y then
+        register event Mouse_move;
+      if event.Graphics.keypressed then
+        register event (Key event.Graphics.key);
+      if event.Graphics.button <> !last_event.Graphics.button then
+        register
+          event
+          (if event.Graphics.button then Mouse_down else Mouse_up);
+      last_event := event;
+      wait ()
+    | Some event ->
+      debug_event event;
+      event in
+  wait
+;;
+
+let rgb = Graphics.rgb;;
+
 let projection = ref (Geometry.identity 3);;
 
 let model =
@@ -23,9 +150,25 @@ let model =
   model
 ;;
 
-let mk_proj () =
-  let w = Graphics.size_x () in
-  let h = Graphics.size_y () in
+let with_graph title f =
+  Graphics.open_graph "";
+  Graphics.set_window_title title;
+  let r =
+    try
+      Graphics.auto_synchronize false;
+      let size_x = Graphics.size_x () in
+      let size_y = Graphics.size_y () in
+      let mouse_x, mouse_y = Graphics.mouse_pos () in
+      f size_x size_y mouse_x mouse_y
+    with
+    | x ->
+      Graphics.close_graph ();
+      raise x in
+  Graphics.close_graph ();
+  r
+;;
+
+let mk_proj w h =
   let m = Geometry.identity 3 in
   let cx = float (w - 1) /. 2.0 in
   let cy = float (h - 1) /. 2.0 in
@@ -37,8 +180,13 @@ let mk_proj () =
   projection := m;
 ;;
 
-let clear r g b =
-  Graphics.set_color (Graphics.rgb r g b);
+let mk_hud () =
+  let m = Geometry.identity 3 in
+  projection := m;
+;;
+
+let clear color =
+  Graphics.set_color color;
   Graphics.fill_rect
     0 0 (Graphics.size_x () - 1) (Graphics.size_y () - 1)
 ;;
@@ -63,6 +211,12 @@ let with_proj f =
   push ();
   f ();
   pop ()
+;;
+
+let load_id () =
+  ignore (Stack.pop model);
+  let m = Geometry.identity 3 in
+  Stack.push m model
 ;;
 
 let rotate a =

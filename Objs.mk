@@ -29,6 +29,7 @@ MLIFILES=\
  expr.mli\
  cube.mli\
  graph.mli\
+ cubes.mli\
  main.mli
 
 MLFILES=\
@@ -39,6 +40,7 @@ MLFILES=\
  maps.ml\
  expr.ml\
  graph.ml\
+ cubes.ml\
  main.ml
 
 CAMLFILES=\

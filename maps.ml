@@ -23,3 +23,5 @@ module OrderedInt =
 ;;
 
 module Int = Map.Make (OrderedInt);;
+
+module String = Map.Make (String);;

@@ -16,3 +16,5 @@
 (**********************************************************************)
 
 module Int : Map.S with type key = int;;
+
+module String : Map.S with type key = string;;

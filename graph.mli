@@ -15,13 +15,39 @@
 (* along with mlcubes. If not, see <http://www.gnu.org/licenses/>.    *)
 (**********************************************************************)
 
-val mk_proj : unit -> unit;;
+type color;;
 
-val clear : int -> int -> int -> unit;;
+type event_kind =
+  | Mouse_move
+  | Mouse_down
+  | Mouse_up
+  | Key of char
+  | Window_resize of int * int
+;;
+
+type event =
+  {
+    mouse_x : int;
+    mouse_y : int;
+    event_kind : event_kind;
+  }
+;;
+
+val with_graph : string -> (int -> int -> int -> int -> 'a) -> 'a;;
+
+val rgb : int -> int -> int -> color;;
+
+val mk_proj : int -> int -> unit;;
+
+val mk_hud : unit -> unit;;
+
+val clear : color -> unit;;
 
 val swap : unit -> unit;;
 
 val with_proj : (unit -> unit) -> unit;;
+
+val load_id : unit -> unit;;
 
 val mult : Geometry.matrix -> unit;;
 
@@ -33,6 +59,9 @@ val scale : float -> unit;;
 
 val project : Geometry.vector -> int * int;;
 
-val draw_poly : Geometry.vector array -> Graphics.color -> unit;;
+val draw_poly : Geometry.vector array -> color -> unit;;
 
-val fill_poly : Geometry.vector array -> Graphics.color -> unit;;
+val fill_poly : Geometry.vector array -> color -> unit;;
+
+val wait_next_event : unit -> event;;
+
