@@ -1,4 +1,6 @@
 (**********************************************************************)
+(* Copyright (C) 2017 Clément Franchini                               *)
+(*                                                                    *)
 (* This file is part of mlcubes.                                      *)
 (*                                                                    *)
 (* mlcubes is free software: you can redistribute it and/or modify it *)
