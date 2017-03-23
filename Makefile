@@ -30,6 +30,8 @@ OCAMLOPT=$(OCAMLOPTCMD) $(OCAMLFLAGS)
 OCAMLDEP=ocamldep$(EXEEXT)
 RM=rm$(EXEEXT) -f
 CHMOD=chmod$(EXEEXT)
+MKDIR=mkdir$(EXEEXT) -p
+CP=cp$(EXEEXT)
 
 include Objs.mk
 
@@ -56,6 +58,11 @@ binobjs: $(BINOBJS)
 byt: $(BYTEXE)
 
 bytobjs: $(BYTOBJS)
+
+install:
+	$(CHECKINSTALL)
+	$(MKDIR) $(DESTDIR)$(PREFIX)/bin
+	$(CP) $(BINEXE) $(DESTDIR)$(PREFIX)/bin/$(EXENAME)$(EXEEXT)
 
 interfaces: $(INTERFACES)
 

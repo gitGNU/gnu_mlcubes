@@ -97,6 +97,12 @@ else
         echo "PREFIX=$PREFIX"
         echo "OS=$OS"
         echo "MODE=$MODE"
+        if [ "$MODE" = USER ]
+        then
+            echo "CHECKINSTALL=true\$(EXEEXT)"
+        else
+            echo "CHECKINSTALL=false\$(EXEEXT)"
+        fi
     ) >.config.mk
     chmod 0000 .config.mk
     chmod +rw .config.mk
