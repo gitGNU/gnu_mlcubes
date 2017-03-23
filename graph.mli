@@ -76,6 +76,8 @@ val fill_poly : Geometry.vector array -> color -> unit;;
 
 val wait_next_event : unit -> event;;
 
+val draw_rect : color -> rect -> unit;;
+
 val fill_rect : color -> rect -> unit;;
 
 val text_size : string -> int * int;;

@@ -44,6 +44,151 @@ type rect =
   }
 ;;
 
+let dim m = Array.length m, Array.length m.(0);;
+
+let foldi_matrix f e m =
+  let h, w = dim m in
+  let rec loop e i j =
+    if i = h then
+      e
+    else if j = w then
+      loop e (succ i) 0
+    else
+      let e = f e i j m.(i).(j) in
+      loop e i (succ j) in
+  loop e 0 0
+;;
+
+
+let get_image, fill_rect, draw_rect =
+  (* Use that code to test rectangle fix
+  let draw =
+    Random.self_init ();
+    let draw () =
+      Random.int 3 - 1 in
+    draw in
+  let hack mthd =
+    let dx = draw () in
+    let dy = draw () in
+    let dw = draw () in
+    let dh = draw () in
+    let hacked_method x y w h =
+      mthd (x + dx) (y + dy) (w + dw) (h + dh) in
+    hacked_method in
+  let get_image = hack Graphics.get_image
+  and fill_rect = hack Graphics.fill_rect
+  and draw_rect = hack Graphics.draw_rect in
+  get_image, fill_rect, draw_rect
+   *)
+  Graphics.get_image, Graphics.fill_rect, Graphics.draw_rect
+;;
+
+let extract_bound image =
+  foldi_matrix
+    (fun (min_i, min_j, max_i, max_j) i j color ->
+     if color = Graphics.foreground then
+       min min_i i, min min_j j, max max_i i, max max_j j
+     else if color = Graphics.background then
+       min_i, min_j, max_i, max_j
+     else
+       failwith "unknown color when fixing")
+    (max_int, max_int, min_int, min_int)
+    image
+;;
+
+let debug_clear w h =
+  Graphics.set_color Graphics.background;
+  let rec loop i j =
+    if i = h then
+      ()
+    else if j = w then
+      loop (succ i) 0
+    else
+      begin
+        Graphics.plot j i;
+        loop i (succ j)
+      end in
+  loop 0 0;
+  Graphics.set_color Graphics.foreground
+;;
+
+let fix_get_image () =
+  let get_diff get_image =
+    debug_clear 50 50;
+    Graphics.plot 10 10;
+    let image = get_image 5 5 20 20 in
+    let image = Graphics.dump_image image in
+    let _, min_j, max_i, _ = extract_bound image in
+    let h, w = dim image in
+    Debug.fdebug
+      1
+      (fun epf ->
+       Format.fprintf epf "fix_get_image %d %d %d %d" min_j max_i w h);
+    let dx = min_j - 5 in
+    let dy = h - max_i - 6 in
+    let dw = 20 - w in
+    let dh = 20 - h in
+    Debug.fdebug
+      1
+      (fun epf ->
+       Format.fprintf epf "fix_get_image %d %d %d %d" dx dy dw dh);
+    dx, dy, dw, dh in
+  let dx, dy, dw, dh = get_diff get_image in
+  let get_image x y w h =
+    get_image (x + dx) (y + dy) (w + dw) (h + dh) in
+  assert (get_diff get_image = (0, 0, 0, 0));
+  get_image
+;;
+
+let fix_rect_method debug_name rect_method get_image =
+  let get_diff rect_method =
+    debug_clear 50 50;
+    rect_method 5 5 10 10;
+    let image = get_image 0 0 20 20 in
+    let image = Graphics.dump_image image in
+    assert (dim image = (20, 20));
+    let min_i, min_j, max_i, max_j = extract_bound image in
+    Debug.fdebug
+      1
+      (fun epf ->
+       Format.fprintf
+         epf "fix_rect_method %s %d %d %d %d"
+         debug_name min_i min_j max_i max_j);
+    let dx = 5 - min_j in
+    let dy = max_i - 14 in
+    let dw = 9 - (max_j - min_j) in
+    let dh = 9 - (max_i - min_i) in
+    Debug.fdebug
+      1
+      (fun epf ->
+       Format.fprintf
+         epf "fix_rect_method %s %d %d %d %d" debug_name dx dy dw dh);
+    dx, dy, dw, dh in
+  let dx, dy, dw, dh = get_diff rect_method in
+  let rect_method x y w h =
+    rect_method (x + dx) (y + dy) (w + dw) (h + dh) in
+  assert (get_diff rect_method = (0, 0, 0, 0));
+  rect_method
+;;
+
+let fix_fill_rect = fix_rect_method "fill_rect" fill_rect
+and fix_draw_rect = fix_rect_method "draw_rect" draw_rect
+;;
+
+let fix, get_image, fill_rect, draw_rect =
+  let get_image_ref = ref (fun _ _ _ _ -> assert false) in
+  let fill_rect_ref = ref (fun _ _ _ _ -> assert false) in
+  let draw_rect_ref = ref (fun _ _ _ _ -> assert false) in
+  let fix () =
+    get_image_ref := fix_get_image ();
+    fill_rect_ref := fix_fill_rect !get_image_ref;
+    draw_rect_ref := fix_draw_rect !get_image_ref in
+  let get_image x y w h = !get_image_ref x y w h in
+  let fill_rect x y w h = !fill_rect_ref x y w h in
+  let draw_rect x y w h = !draw_rect_ref x y w h in
+  fix, get_image, fill_rect, draw_rect
+;;
+
 let debug_raw_event = function
   | { Graphics.
       mouse_x = mouse_x;
@@ -163,6 +308,7 @@ let model =
 
 let with_graph title f =
   Graphics.open_graph "";
+  fix ();
   Graphics.set_window_title title;
   let r =
     try
@@ -198,7 +344,7 @@ let mk_hud () =
 
 let clear color =
   Graphics.set_color color;
-  Graphics.fill_rect
+  fill_rect
     0 0 (Graphics.size_x () - 1) (Graphics.size_y () - 1)
 ;;
 
@@ -287,7 +433,9 @@ let with_rect mthd color = function
     mthd left bottom width height
 ;;
 
-let fill_rect = with_rect Graphics.fill_rect;;
+let fill_rect = with_rect fill_rect;;
+
+let draw_rect = with_rect draw_rect;;
 
 let text_size = Graphics.text_size;;
 
@@ -297,13 +445,19 @@ let draw_string =
     begin
       if not (Hashtbl.mem mem (bg, fg, scale, text)) then
         let w, h = Graphics.text_size text in
-        let old = Graphics.get_image 0 0 w h in
-        Graphics.set_color bg;
-        Graphics.fill_rect 0 0 w h;
+        let old = get_image 0 0 w h in
+        let rect =
+          {
+            left = 0;
+            bottom = 0;
+            width = w;
+            height = h;
+          } in
+        fill_rect bg rect;
         Graphics.moveto 0 0;
         Graphics.set_color fg;
         Graphics.draw_string text;
-        let text_image = Graphics.get_image 0 0 w h in
+        let text_image = get_image 0 0 w h in
         Graphics.draw_image old 0 0;
         let dump = Graphics.dump_image text_image in
         let scaled =
