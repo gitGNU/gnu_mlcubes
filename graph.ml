@@ -344,8 +344,7 @@ let mk_hud () =
 
 let clear color =
   Graphics.set_color color;
-  fill_rect
-    0 0 (Graphics.size_x () - 1) (Graphics.size_y () - 1)
+  fill_rect 0 0 (Graphics.size_x ()) (Graphics.size_y ())
 ;;
 
 let swap () = Graphics.synchronize ();;
