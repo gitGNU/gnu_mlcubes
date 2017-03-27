@@ -1,3 +1,4 @@
+ifelse(true,false,
 ########################################################################
 # Copyright (C) 2017 Clément Franchini                                 #
 #                                                                      #
@@ -16,6 +17,19 @@
 # You should have received a copy of the GNU General Public License    #
 # along with mlcubes. If not, see <http://www.gnu.org/licenses/>.      #
 ########################################################################
+)dnl
+define(`SETPREFIX',`dnl
+`PREFIX'=PREFIX
 
-EXEEXT=
-OBJEXT=.o
+')dnl
+define(`SETOCAMLFLAGS',)dnl
+define(`USEOCAMLFLAGS',)dnl
+define(`USEANNOT',)dnl
+define(INSTALLPHONY,` install')dnl
+define(INSTALL,`dnl
+install:
+	$(MKDIR) USEDESTDIR$(`PREFIX')`'SEP`'bin
+	$(CP) $(BINEXE) USEDESTDIR$(`PREFIX')`'SEP`'bin`'SEP`'dnl
+$(EXENAME)`'EXEEXT
+
+')dnl

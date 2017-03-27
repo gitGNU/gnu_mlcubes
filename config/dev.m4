@@ -1,3 +1,4 @@
+ifelse(true,false,
 ########################################################################
 # Copyright (C) 2017 Clément Franchini                                 #
 #                                                                      #
@@ -16,59 +17,13 @@
 # You should have received a copy of the GNU General Public License    #
 # along with mlcubes. If not, see <http://www.gnu.org/licenses/>.      #
 ########################################################################
-
-BYTLIBS=\
- graphics.cma
-
-BINLIBS=$(BYTLIBS:.cma=.cmxa)
-
-MLIFILES=\
- config.mli\
- debug.mli\
- common.mli\
- geometry.mli\
- maps.mli\
- expr.mli\
- cube.mli\
- graph.mli\
- cubes.mli\
- main.mli
-
-MLFILES=\
- config.ml\
- debug.ml\
- common.ml\
- geometry.ml\
- maps.ml\
- expr.ml\
- graph.ml\
- cubes.ml\
- main.ml
-
-CAMLFILES=\
- $(MLIFILES)\
- $(MLFILES)
-
-INTERFACES=$(MLIFILES:.mli=.cmi)\
-
-BYTOBJS=$(MLFILES:.ml=.cmo)
-
-BINOBJS=$(BYTOBJS:.cmo=.cmx)
-
-OBJS=\
- $(BYTOBJS)\
- $(BINOBJS)
-
-SPURIOUS=\
- $(MLFILES:.ml=.annot)\
- $(MLFILES:.ml=$(OBJEXT))
-
-EXENAME=mlcubes
-
-BYTEXE=$(EXENAME).byt$(EXEEXT)
-
-BINEXE=$(EXENAME).bin$(EXEEXT)
-
-EXES=\
- $(BYTEXE)\
- $(BINEXE)
+)dnl
+define(OCAMLFLAGS,)dnl
+define(SETPREFIX,)dnl
+define(SETOCAMLFLAGS,`dnl
+`OCAMLFLAGS'=-safe-string -strict-sequence -w A -warn-error A
+')dnl
+define(USEOCAMLFLAGS,` $(`OCAMLFLAGS')')dnl
+define(USEANNOT,` -annot')dnl
+define(INSTALLPHONY,)dnl
+define(INSTALL,)dnl

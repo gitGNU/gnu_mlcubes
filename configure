@@ -20,7 +20,7 @@
 ########################################################################
 
 HELP=
-MODE=USER
+MODE=user
 OS=
 PREFIX=/usr
 
@@ -38,7 +38,7 @@ parse () {
     then
         case "$1" in
             --dev)
-                MODE=DEV;;
+                MODE=dev;;
             --nt)
                 OS=nt;;
             --posix)
@@ -86,27 +86,33 @@ else
     (
         echo "#!/bin/sh -e"
         echo ""
-        echo "rm -f unconfigure .depend.mk .config.mk"
+        echo "rm -f unconfigure .depend.mk .config.m4 Makefile Objs.mk"
     ) >unconfigure
     chmod 0000 unconfigure
     chmod +rw unconfigure
     chmod -w+x unconfigure
 
-    rm -f .config.mk
+    rm -f .config.m4
     (
-        echo "PREFIX=$PREFIX"
-        echo "OS=$OS"
-        echo "MODE=$MODE"
-        if [ "$MODE" = USER ]
-        then
-            echo "CHECKINSTALL=true\$(EXEEXT)"
-        else
-            echo "CHECKINSTALL=false\$(EXEEXT)"
-        fi
-    ) >.config.mk
-    chmod 0000 .config.mk
-    chmod +rw .config.mk
-    chmod -w .config.mk
+        echo "define(\`PREFIX',$PREFIX)dnl"
+        echo "define(\`OS',$OS)dnl"
+        echo "define(\`MODE',$MODE)dnl"
+    ) >.config.m4
+    chmod 0000 .config.m4
+    chmod +rw .config.m4
+    chmod -w .config.m4
+
+    rm -f Makefile
+    m4 -I config config/Makefile.m4 >Makefile
+    chmod 0000 Makefile
+    chmod +rw Makefile
+    chmod -w Makefile
+
+    rm -f Objs.mk
+    m4 -I config config/Objs.mk.m4 >Objs.mk
+    chmod 0000 Objs.mk
+    chmod +rw Objs.mk
+    chmod -w Objs.mk
 
     rm -f .depend.mk
     echo >.depend.mk

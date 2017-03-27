@@ -1,3 +1,4 @@
+ifelse(true,false,
 ########################################################################
 # Copyright (C) 2017 Clément Franchini                                 #
 #                                                                      #
@@ -16,73 +17,61 @@
 # You should have received a copy of the GNU General Public License    #
 # along with mlcubes. If not, see <http://www.gnu.org/licenses/>.      #
 ########################################################################
+)dnl
+include(.config.m4)dnl
+include(OS.m4)dnl
+BYTLIBS=\
+ graphics.cma
 
-include .config.mk
-include Config-$(OS).mk
+BINLIBS=$(BYTLIBS:.cma=.cmxa)
 
-OCAMLUSERFLAGS=
-OCAMLDEVFLAGS=-safe-string -strict-sequence -w A -warn-error A
-OCAMLFLAGS=$(OCAML$(MODE)FLAGS)
-OCAMLCCMD=ocamlc.opt$(EXEEXT)
-OCAMLOPTCMD=ocamlopt.opt$(EXEEXT)
-OCAMLC=$(OCAMLCCMD) -annot $(OCAMLFLAGS)
-OCAMLOPT=$(OCAMLOPTCMD) $(OCAMLFLAGS)
-OCAMLDEP=ocamldep$(EXEEXT)
-RM=rm$(EXEEXT) -f
-CHMOD=chmod$(EXEEXT)
-MKDIR=mkdir$(EXEEXT) -p
-CP=cp$(EXEEXT)
+MLIFILES=\
+ config.mli\
+ debug.mli\
+ common.mli\
+ geometry.mli\
+ maps.mli\
+ expr.mli\
+ cube.mli\
+ graph.mli\
+ cubes.mli\
+ main.mli
 
-include Objs.mk
+MLFILES=\
+ config.ml\
+ debug.ml\
+ common.ml\
+ geometry.ml\
+ maps.ml\
+ expr.ml\
+ graph.ml\
+ cubes.ml\
+ main.ml
 
-.PHONY: all clean depend
+CAMLFILES=\
+ $(MLIFILES)\
+ $(MLFILES)
 
-all: byt bin
+INTERFACES=$(MLIFILES:.mli=.cmi)\
 
-clean:
-	$(RM) $(EXES) $(OBJS) $(INTERFACES) $(SPURIOUS)
+BYTOBJS=$(MLFILES:.ml=.cmo)
 
-depend: $(CAMLFILES)
-	@$(RM) .depend.mk
-	$(OCAMLDEP) $(CAMLFILES) >.depend.mk
-	@$(CHMOD) 0000 .depend.mk
-	@$(CHMOD) +rw .depend.mk
-	@$(CHMOD) -w .depend.mk
+BINOBJS=$(BYTOBJS:.cmo=.cmx)
 
-.PHONY: bin binobjs byt bytobjs interfaces objs
+OBJS=\
+ $(BYTOBJS)\
+ $(BINOBJS)
 
-bin: $(BINEXE)
+SPURIOUS=\
+ $(MLFILES:.ml=.annot)\
+ $(MLFILES:.ml=OBJEXT)
 
-binobjs: $(BINOBJS)
+EXENAME=mlcubes
 
-byt: $(BYTEXE)
+BYTEXE=$(EXENAME).byt`'EXEEXT
 
-bytobjs: $(BYTOBJS)
+BINEXE=$(EXENAME).bin`'EXEEXT
 
-install:
-	$(CHECKINSTALL)
-	$(MKDIR) $(DESTDIR)$(PREFIX)/bin
-	$(CP) $(BINEXE) $(DESTDIR)$(PREFIX)/bin/$(EXENAME)$(EXEEXT)
-
-interfaces: $(INTERFACES)
-
-objs: $(OBJS)
-
-$(BYTEXE): $(BYTOBJS)
-	$(OCAMLC) -o $(BYTEXE) $(BYTLIBS) $(BYTOBJS)
-
-$(BINEXE): $(BINOBJS)
-	$(OCAMLOPT) -o $(BINEXE) $(BINLIBS) $(BINOBJS)
-
-.SUFFIXES: .cmi .cmo .cmx .ml .mli
-
-.ml.cmo:
-	$(OCAMLC) -c $<
-
-.ml.cmx:
-	$(OCAMLOPT) -c $<
-
-.mli.cmi:
-	$(OCAMLC) -c $<
-
-include .depend.mk
+EXES=\
+ $(BYTEXE)\
+ $(BINEXE)
